@@ -1,0 +1,14 @@
+# Auto-downloaded distro tarballs (when no sibling clone is present).
+.distro-cache/
+
+# Playwright outputs
+test-results/
+test-artifacts/
+playwright-report/
+tests/playwright/node_modules/
+
+# Editor/OS noise
+.vscode/
+.idea/
+.DS_Store
+*.swp

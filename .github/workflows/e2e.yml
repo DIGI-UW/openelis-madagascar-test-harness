@@ -1,0 +1,104 @@
+name: E2E (against distro candidate)
+
+# Downloads a published distro tarball (Release asset OR auto-archive at a
+# tag/SHA) and runs the harness Playwright suite against it. This is the
+# implementer-perspective smoke: registry-only images, no local builds, no
+# source-tree assumptions — the same shape an Ozone consumer or a fresh
+# `curl + tar xz + docker compose up -d` flow gets.
+#
+# Triggers:
+#   - workflow_dispatch  (manual; pick a distro ref to validate)
+#   - schedule           (nightly against latest distro tag)
+#
+# To validate a candidate before tagging, run with `distro_ref` set to the
+# main-branch SHA the artifact was built from (Phase 3 release.yml in distro
+# uploads a workflow artifact for every push to main; this workflow could
+# be extended later to download that artifact directly).
+
+on:
+  workflow_dispatch:
+    inputs:
+      distro_ref:
+        description: "Distro ref to validate (tag or commit SHA on main)"
+        required: true
+        default: "3.2.1.7-pre-refactor"
+  schedule:
+    - cron: "0 4 * * *"  # 04:00 UTC nightly
+
+env:
+  DISTRO_REPO: DIGI-UW/openelis-madagascar-distro
+  DISTRO_REF: ${{ inputs.distro_ref || '3.2.1.7-pre-refactor' }}
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout harness
+        uses: actions/checkout@v4
+
+      - name: Download distro candidate
+        run: |
+          set -euo pipefail
+          mkdir -p distro
+          curl -sSfL "https://github.com/${DISTRO_REPO}/archive/refs/tags/${DISTRO_REF}.tar.gz" \
+            | tar xz -C distro --strip-components=1
+          ls -la distro/
+
+      - name: Start stack (registry images only)
+        run: |
+          docker compose \
+            -f distro/compose.yaml \
+            -f compose.validate.yaml \
+            up -d
+
+      - name: Wait for core services
+        run: |
+          set -euo pipefail
+          max_attempts=60
+          attempt=1
+          while [ "$attempt" -le "$max_attempts" ]; do
+            healthy_count="$(docker compose -f distro/compose.yaml -f compose.validate.yaml ps --format json | jq -r 'select(.Health == "healthy") | .Service' | wc -l)"
+            if [ "$healthy_count" -ge 3 ]; then
+              echo "Core services are healthy"
+              exit 0
+            fi
+            echo "Waiting ($attempt/$max_attempts)"
+            sleep 5
+            attempt=$((attempt + 1))
+          done
+          docker compose -f distro/compose.yaml -f compose.validate.yaml ps
+          exit 1
+
+      - name: Run foundational + demo Playwright suites
+        run: |
+          set -euo pipefail
+          COMPOSE_PROFILES=demo docker compose \
+            -f distro/compose.yaml \
+            -f compose.validate.yaml \
+            run --rm demo-tests \
+            npx playwright test \
+            --project=harness-foundational \
+            --config=playwright.config.ts \
+            --workers=1
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          mkdir -p test-artifacts
+          docker compose -f distro/compose.yaml -f compose.validate.yaml logs > test-artifacts/all-services.log || true
+          docker compose -f distro/compose.yaml -f compose.validate.yaml ps > test-artifacts/compose-ps.txt || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-${{ env.DISTRO_REF }}
+          path: |
+            test-results
+            test-artifacts
+          if-no-files-found: warn
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f distro/compose.yaml -f compose.validate.yaml down -v

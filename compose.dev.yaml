@@ -1,0 +1,34 @@
+# Dev/build overlay for the harness.
+# Layers ON TOP of distro/compose.yaml to add `build:` directives for
+# locally-buildable services. Distro's compose.yaml itself only references
+# registry images (`:develop`), so consumers like Ozone never see these
+# build paths.
+#
+# Usage:
+#   docker compose -f distro/compose.yaml -f compose.dev.yaml \
+#     [-f compose.validate.yaml] up -d
+#
+# Required env / sibling repos (defaults assume sibling-of-harness layout):
+#   OE_REPO     — path to OpenELIS-Global-2 checkout (default ../OpenELIS-Global-2)
+#   BRIDGE_REPO — path to openelis-analyzer-bridge   (default ../openelis-analyzer-bridge)
+
+services:
+    oe.openelis.org:
+        image: itechuw/openelis-global-2:local
+        build:
+            context: ${OE_REPO:-../OpenELIS-Global-2}
+
+    frontend.openelis.org:
+        image: itechuw/openelis-global-2-frontend:local
+        build:
+            context: ${OE_REPO:-../OpenELIS-Global-2}/frontend
+
+    openelis-analyzer-bridge:
+        image: itechuw/openelis-analyzer-bridge:local
+        build:
+            context: ${BRIDGE_REPO:-../openelis-analyzer-bridge}
+
+# Note: analyzer-mock's `build:` is defined inside compose.validate.yaml
+# itself (since the service is also defined there). When compose.validate.yaml
+# is layered, the mock build is already wired — no separate overlay needed
+# here.
