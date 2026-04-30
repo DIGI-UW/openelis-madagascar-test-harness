@@ -1,6 +1,9 @@
 # Auto-downloaded distro tarballs (when no sibling clone is present).
 .distro-cache/
 
+# Locally-built distro artifacts (scripts/build-distro-tarball.sh output).
+openelis-madagascar-distro-*.tar.gz
+
 # Playwright outputs
 test-results/
 test-artifacts/
