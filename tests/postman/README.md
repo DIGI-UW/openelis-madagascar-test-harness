@@ -69,7 +69,7 @@ The shipped environment file uses demo creds (`admin:adminADMIN!`,
 |---|---|
 | `oe_admin_pass` | Production OE admin password |
 | `bridge_pass`   | Production bridge basic-auth password |
-| `quantstudio_id` | Different DB row ID for QuantStudio 5 (check via Folder #5 → GET controlLot) |
+(removed — analyzer IDs are now resolved by name automatically; nothing to override)
 | `source_ip_genexpert` | Different docker network IP allocation for GeneXpert lane |
 
 ## Troubleshooting

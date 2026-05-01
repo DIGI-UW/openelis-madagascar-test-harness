@@ -292,17 +292,29 @@ EQA_BODY="$(cat <<EOF
 }
 EOF
 )"
-EQA_CODE=$(curl -sk -o "$EQA_LOG" -w "%{http_code}" \
-  -X POST -u "${TEST_USER}:${TEST_PASS}" \
-  -H 'Content-Type: application/json' \
+# Pre-check: OE's POST /rest/eqa/my-programs does NOT 409 on duplicate
+# programName — it just creates a new row each time. Skip the POST if a
+# program with this name already exists.
+EQA_PROGRAM_NAME="WHO AFRO HIV-VL Cycle 2026-Q2"
+EXISTING_COUNT=$(curl -sk -u "${TEST_USER}:${TEST_PASS}" \
   "${BASE_URL}/api/OpenELIS-Global/rest/eqa/my-programs" \
-  -d "$EQA_BODY")
-case "$EQA_CODE" in
-  200|201) echo "[seed-qc]   EQA program created" ;;
-  409)     echo "[seed-qc]   EQA program already exists (idempotent skip)" ;;
-  *)       echo "[seed-qc]   WARN: EQA POST returned HTTP ${EQA_CODE}" >&2
-           sed 's/^/    /' "$EQA_LOG" >&2 ;;
-esac
+  | python3 -c "import sys, json; print(sum(1 for p in json.load(sys.stdin) if p.get('programName') == '${EQA_PROGRAM_NAME}'))" 2>/dev/null \
+  || echo 0)
+
+if [[ "$EXISTING_COUNT" -gt 0 ]]; then
+  echo "[seed-qc]   EQA program already exists (${EXISTING_COUNT} match by name — skip)"
+else
+  EQA_CODE=$(curl -sk -o "$EQA_LOG" -w "%{http_code}" \
+    -X POST -u "${TEST_USER}:${TEST_PASS}" \
+    -H 'Content-Type: application/json' \
+    "${BASE_URL}/api/OpenELIS-Global/rest/eqa/my-programs" \
+    -d "$EQA_BODY")
+  case "$EQA_CODE" in
+    200|201) echo "[seed-qc]   EQA program created" ;;
+    *)       echo "[seed-qc]   WARN: EQA POST returned HTTP ${EQA_CODE}" >&2
+             sed 's/^/    /' "$EQA_LOG" >&2 ;;
+  esac
+fi
 rm -f "$EQA_LOG"
 
 echo

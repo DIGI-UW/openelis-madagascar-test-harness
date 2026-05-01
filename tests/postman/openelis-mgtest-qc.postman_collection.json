@@ -16,8 +16,7 @@
     { "key": "bridge_destination_hl7",   "value": "tcp://openelis-analyzer-bridge:2575",      "type": "string" },
     { "key": "source_ip_genexpert",      "value": "10.42.20.10",                              "type": "string" },
     { "key": "bridge_user",              "value": "bridge",                                   "type": "string" },
-    { "key": "bridge_pass",              "value": "changeme",                                 "type": "string" },
-    { "key": "quantstudio_id",           "value": "8",                                        "type": "string" }
+    { "key": "bridge_pass",              "value": "changeme",                                 "type": "string" }
   ],
   "item": [
     {
@@ -114,14 +113,14 @@
     },
     {
       "name": "3. FILE QC — QuantStudio 5 (VIH-1)",
-      "description": "QuantStudio FILE lane — LOT-LPC-26B (target=32.0 Ct, SD=0.5). The mock generates a CSV with Sample Name=`QC-{lot}-{level}` and Task=STANDARD, then uploads to the bridge via `bridge_upload`. OE-side qcRules: SPECIMEN_ID_PREFIX QC + FIELD_EQUALS QC_TASK STANDARD.\n\nNote: {{quantstudio_id}} defaults to 8 (the seeded analyzer ID); override per-environment if your DB has a different ID — check via Folder #5 'GET controlLot'.",
+      "description": "QuantStudio FILE lane — LOT-LPC-26B (target=32.0 Ct, SD=0.5). The mock generates a CSV with Sample Name=`QC-{lot}-{level}` and Task=STANDARD, then uploads to the bridge via `bridge_upload`. OE-side qcRules: SPECIMEN_ID_PREFIX QC + FIELD_EQUALS QC_TASK STANDARD.\n\nThe mock resolves the analyzer ID by querying OE for the analyzer matching `template.analyzer.name` ('QuantStudio 5'), so testers don't need to track which DB row ID is current.",
       "item": [
         {
           "name": "POST baseline pass (qc_deviation=0)",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 0,\n  \"bridge_upload\": {\n    \"analyzer_id\": \"{{quantstudio_id}}\",\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 0,\n  \"bridge_upload\": {\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
             "url": { "raw": "{{mock_url}}/simulate/file/quantstudio5", "host": ["{{mock_url}}"], "path": ["simulate", "file", "quantstudio5"] }
           },
           "event": [
@@ -134,7 +133,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 3.0,\n  \"bridge_upload\": {\n    \"analyzer_id\": \"{{quantstudio_id}}\",\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 3.0,\n  \"bridge_upload\": {\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
             "url": { "raw": "{{mock_url}}/simulate/file/quantstudio5", "host": ["{{mock_url}}"], "path": ["simulate", "file", "quantstudio5"] }
           },
           "event": [
@@ -147,7 +146,7 @@
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 2.0,\n  \"bridge_upload\": {\n    \"analyzer_id\": \"{{quantstudio_id}}\",\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 2.0,\n  \"bridge_upload\": {\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
             "url": { "raw": "{{mock_url}}/simulate/file/quantstudio5", "host": ["{{mock_url}}"], "path": ["simulate", "file", "quantstudio5"] }
           },
           "event": [
