@@ -101,7 +101,7 @@ OE_REPO="${OE_REPO:-$(realpath "$ROOT/../OpenELIS-Global-2" 2>/dev/null || echo 
 for arg in "$@"; do
   case "$arg" in
     --clean) CLEAN_FLAG="-v"; echo "[mode] --clean: volumes will be wiped";;
-    --rebuild) REBUILD_FLAG="yes"; echo "[mode] --rebuild: local images will be built";;
+    --rebuild|--build) REBUILD_FLAG="yes"; echo "[mode] --rebuild: local images will be built";;
     --seed-harness) SEED_HARNESS_FLAG="yes"; echo "[mode] --seed-harness: seed 7 harness analyzers via REST API (CI parity)";;
   esac
 done
