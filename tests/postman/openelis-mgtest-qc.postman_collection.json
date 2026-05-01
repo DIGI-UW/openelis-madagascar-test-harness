@@ -1,0 +1,266 @@
+{
+  "info": {
+    "name": "OpenELIS mgtest — QC Validation",
+    "description": "Postman trigger collection for the Madagascar mgtest server. Drives Westgard QC scenarios across all three lanes (ASTM / FILE / HL7) and queries OpenELIS-side state for verification.\n\nDesign principle: Postman triggers the mock; the mock owns wire-format generation + transport. Postman never uploads payloads. For every lane, requests POST `{{mock_url}}/simulate/{lane}/{template}` with `qc=true, qc_deviation=N`. The mock generates a deterministic, profile-matched message and pushes it to the bridge using internal docker-network creds.\n\nAll demo creds default to the mgtest values (admin / adminADMIN!, bridge / changeme). Override per-environment without committing real secrets.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    { "key": "mock_url",                 "value": "https://mock.mgtest.openelis-global.org", "type": "string" },
+    { "key": "oe_url",                   "value": "https://mgtest.openelis-global.org",       "type": "string" },
+    { "key": "oe_admin",                 "value": "admin",                                    "type": "string" },
+    { "key": "oe_admin_pass",            "value": "adminADMIN!",                              "type": "string" },
+    { "key": "bridge_destination_astm",  "value": "tcp://openelis-analyzer-bridge:12001",     "type": "string" },
+    { "key": "bridge_destination_hl7",   "value": "tcp://openelis-analyzer-bridge:2575",      "type": "string" },
+    { "key": "source_ip_genexpert",      "value": "10.42.20.10",                              "type": "string" },
+    { "key": "bridge_user",              "value": "bridge",                                   "type": "string" },
+    { "key": "bridge_pass",              "value": "changeme",                                 "type": "string" },
+    { "key": "quantstudio_id",           "value": "8",                                        "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Health & Inventory",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{mock_url}}/health", "host": ["{{mock_url}}"], "path": ["health"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "GET /analyzers",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{mock_url}}/analyzers", "host": ["{{mock_url}}"], "path": ["analyzers"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. ASTM QC — GeneXpert (HIV-VL)",
+      "description": "GeneXpert ASTM lane — LOT-HIVVL-N (mean=1250, SD=125). The OE-side qcRule is `FIELD_EQUALS targetField=O.12 operand=Q` (the ASTM Action Code).",
+      "item": [
+        {
+          "name": "POST baseline pass (qc_deviation=0.5)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 0.5,\n  \"destination\": \"{{bridge_destination_astm}}\",\n  \"source_ip\": \"{{source_ip_genexpert}}\"\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/astm/genexpert_astm", "host": ["{{mock_url}}"], "path": ["simulate", "astm", "genexpert_astm"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));", "pm.test('qc=true echoed', () => pm.expect(pm.response.json().qc).to.equal(true));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "POST 1-3s rejection (qc_deviation=3.5)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 3.5,\n  \"destination\": \"{{bridge_destination_astm}}\",\n  \"source_ip\": \"{{source_ip_genexpert}}\"\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/astm/genexpert_astm", "host": ["{{mock_url}}"], "path": ["simulate", "astm", "genexpert_astm"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "POST 2-2s sequence (qc_deviation=2.0)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 2.0,\n  \"count\": 2,\n  \"destination\": \"{{bridge_destination_astm}}\",\n  \"source_ip\": \"{{source_ip_genexpert}}\"\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/astm/genexpert_astm", "host": ["{{mock_url}}"], "path": ["simulate", "astm", "genexpert_astm"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "POST R-4s pair (+2.0 then -2.0)",
+          "description": "Run TWICE manually: first request sends qc_deviation=+2.0, then change to -2.0 and resend. Two same-lot opposite-side ≥2SD results trip R₄ₛ.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 2.0,\n  \"destination\": \"{{bridge_destination_astm}}\",\n  \"source_ip\": \"{{source_ip_genexpert}}\"\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/astm/genexpert_astm", "host": ["{{mock_url}}"], "path": ["simulate", "astm", "genexpert_astm"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "POST 4-1s sequence (qc_deviation=1.0 ×4)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 1.0,\n  \"count\": 4,\n  \"destination\": \"{{bridge_destination_astm}}\",\n  \"source_ip\": \"{{source_ip_genexpert}}\"\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/astm/genexpert_astm", "host": ["{{mock_url}}"], "path": ["simulate", "astm", "genexpert_astm"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. FILE QC — QuantStudio 5 (VIH-1)",
+      "description": "QuantStudio FILE lane — LOT-LPC-26B (target=32.0 Ct, SD=0.5). The mock generates a CSV with Sample Name=`QC-{lot}-{level}` and Task=STANDARD, then uploads to the bridge via `bridge_upload`. OE-side qcRules: SPECIMEN_ID_PREFIX QC + FIELD_EQUALS QC_TASK STANDARD.\n\nNote: {{quantstudio_id}} defaults to 8 (the seeded analyzer ID); override per-environment if your DB has a different ID — check via Folder #5 'GET controlLot'.",
+      "item": [
+        {
+          "name": "POST baseline pass (qc_deviation=0)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 0,\n  \"bridge_upload\": {\n    \"analyzer_id\": \"{{quantstudio_id}}\",\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/file/quantstudio5", "host": ["{{mock_url}}"], "path": ["simulate", "file", "quantstudio5"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "POST 1-3s rejection (qc_deviation=3.0)",
+          "description": "LPC at z=3.0 → Ct=33.5 trips 1₃ₛ exactly (matches QuantStudio Failing QC Samples README math).",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 3.0,\n  \"bridge_upload\": {\n    \"analyzer_id\": \"{{quantstudio_id}}\",\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/file/quantstudio5", "host": ["{{mock_url}}"], "path": ["simulate", "file", "quantstudio5"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "POST 2-2s sequence (qc_deviation=2.0 ×2)",
+          "description": "Run TWICE manually for two same-side ≥2SD events. (count param not yet supported on FILE qc path; one POST per event.)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 2.0,\n  \"bridge_upload\": {\n    \"analyzer_id\": \"{{quantstudio_id}}\",\n    \"bridge_user\": \"{{bridge_user}}\",\n    \"bridge_pass\": \"{{bridge_pass}}\",\n    \"test_code\": \"VIH-1\"\n  }\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/file/quantstudio5", "host": ["{{mock_url}}"], "path": ["simulate", "file", "quantstudio5"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. HL7 QC — Mindray BS-200 (GLU)",
+      "description": "Mindray BS-200 HL7 lane — LOT-GLU-N (target=100 mg/dL, SD=5). Mock generates ORU^R01 with OBR-3=`QC-LOT-GLU-N-NORMAL`, pushes to bridge over MLLP. OE-side qcRule: SPECIMEN_ID_PREFIX QC.",
+      "item": [
+        {
+          "name": "POST baseline pass (qc_deviation=0)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 0,\n  \"destination\": \"{{bridge_destination_hl7}}\"\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/hl7/mindray_bs200", "host": ["{{mock_url}}"], "path": ["simulate", "hl7", "mindray_bs200"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "POST 1-3s rejection (qc_deviation=3.5)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 3.5,\n  \"destination\": \"{{bridge_destination_hl7}}\"\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/hl7/mindray_bs200", "host": ["{{mock_url}}"], "path": ["simulate", "hl7", "mindray_bs200"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        },
+        {
+          "name": "POST 2-2s sequence (qc_deviation=2.0 ×2)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"qc\": true,\n  \"qc_deviation\": 2.0,\n  \"count\": 2,\n  \"destination\": \"{{bridge_destination_hl7}}\"\n}" },
+            "url": { "raw": "{{mock_url}}/simulate/hl7/mindray_bs200", "host": ["{{mock_url}}"], "path": ["simulate", "hl7", "mindray_bs200"] }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"], "type": "text/javascript" } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. OE-Side Verification",
+      "description": "Query OpenELIS REST endpoints to confirm the QC pipeline state landed correctly. All requests use HTTP Basic with {{oe_admin}}:{{oe_admin_pass}}.",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{oe_admin}}", "type": "string" },
+          { "key": "password", "value": "{{oe_admin_pass}}", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "GET QC violations (unresolved)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{oe_url}}/api/OpenELIS-Global/rest/qc/violations?resolved=false", "host": ["{{oe_url}}"], "path": ["api", "OpenELIS-Global", "rest", "qc", "violations"], "query": [{ "key": "resolved", "value": "false" }] }
+          }
+        },
+        {
+          "name": "GET QC alerts",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{oe_url}}/api/OpenELIS-Global/rest/qc/alerts", "host": ["{{oe_url}}"], "path": ["api", "OpenELIS-Global", "rest", "qc", "alerts"] }
+          }
+        },
+        {
+          "name": "GET QC control lots",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{oe_url}}/api/OpenELIS-Global/rest/qc/controlLot", "host": ["{{oe_url}}"], "path": ["api", "OpenELIS-Global", "rest", "qc", "controlLot"] }
+          }
+        },
+        {
+          "name": "GET EQA programs",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{oe_url}}/api/OpenELIS-Global/rest/eqa/my-programs", "host": ["{{oe_url}}"], "path": ["api", "OpenELIS-Global", "rest", "eqa", "my-programs"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. EQA Setup",
+      "description": "Idempotent seed for an EQA program — backfills the LO-07-03 Programme dropdown.",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{oe_admin}}", "type": "string" },
+          { "key": "password", "value": "{{oe_admin_pass}}", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "POST seed WHO AFRO HIV-VL Cycle 2026-Q2",
+          "description": "Creates an EQA program backed by HIV-VL test. Idempotent — returns 409 if the program already exists.",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"programName\": \"WHO AFRO HIV-VL Cycle 2026-Q2\",\n  \"provider\": \"WHO AFRO\",\n  \"description\": \"Quarterly proficiency testing — HIV-1 viral load\",\n  \"labUnitIds\": [],\n  \"testIds\": [],\n  \"panelIds\": [],\n  \"isActive\": true\n}" },
+            "url": { "raw": "{{oe_url}}/api/OpenELIS-Global/rest/eqa/my-programs", "host": ["{{oe_url}}"], "path": ["api", "OpenELIS-Global", "rest", "eqa", "my-programs"] }
+          }
+        }
+      ]
+    }
+  ]
+}

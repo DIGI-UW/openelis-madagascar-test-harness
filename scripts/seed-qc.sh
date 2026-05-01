@@ -213,15 +213,114 @@ else
   done
 fi
 
+## ── Mindray BS-200 / HL7 lane ──────────────────────────────────────────────
+# GLU control lot to back the HL7 mock template's qc_controls entry
+# (target=100 mg/dL, sd=5). Mock HL7 generate_qc emits OBR-3 = QC-LOT-GLU-N-NORMAL
+# matching the SPECIMEN_ID_PREFIX QC qcRule on the Mindray BS-200 HL7 profile.
+echo
+echo "[seed-qc] Resolving GLU test_id and Mindray BS-200 instrument_id..."
+MINDRAY_BS200_INST_ID="$(psql_query "SELECT id FROM clinlims.analyzer WHERE name='Mindray BS-200' ORDER BY id LIMIT 1;")"
+GLU_TEST_ID="$(psql_query "SELECT atm.test_id FROM clinlims.analyzer_test_map atm WHERE atm.analyzer_id=${MINDRAY_BS200_INST_ID:-0} AND atm.analyzer_test_name='GLU' LIMIT 1;")"
+
+if [ -z "$MINDRAY_BS200_INST_ID" ] || [ -z "$GLU_TEST_ID" ]; then
+  echo "[seed-qc] WARN: skipping Mindray BS-200 QC seed — IDs unresolved (GLU test_id='$GLU_TEST_ID', Mindray BS-200 instrument_id='$MINDRAY_BS200_INST_ID')" >&2
+  echo "[seed-qc]   Re-run scripts/restart-stack.sh --seed-harness to register Mindray BS-200." >&2
+else
+  echo "[seed-qc]   GLU test_id=${GLU_TEST_ID}, Mindray BS-200 instrument_id=${MINDRAY_BS200_INST_ID}"
+
+  echo "[seed-qc] Applying Westgard STANDARD preset for Mindray BS-200..."
+  BS200_PRESET_LOG="$(mktemp)"
+  BS200_PRESET_CODE=$(curl -sk -o "$BS200_PRESET_LOG" -w "%{http_code}" \
+    -X POST -u "${TEST_USER}:${TEST_PASS}" \
+    "${BASE_URL}/api/OpenELIS-Global/rest/qc/ruleConfig/preset" \
+    --data-urlencode "testId=${GLU_TEST_ID}" \
+    --data-urlencode "instrumentId=${MINDRAY_BS200_INST_ID}" \
+    --data-urlencode "preset=STANDARD")
+  case "$BS200_PRESET_CODE" in
+    200) echo "[seed-qc]   Westgard preset STANDARD applied (BS-200)" ;;
+    409) echo "[seed-qc]   Westgard preset already exists (idempotent skip)" ;;
+    *)   echo "[seed-qc]   WARN: BS-200 preset POST returned HTTP ${BS200_PRESET_CODE}" >&2
+         sed 's/^/    /' "$BS200_PRESET_LOG" >&2 ;;
+  esac
+  rm -f "$BS200_PRESET_LOG"
+
+  echo "[seed-qc] Creating control lot LOT-GLU-N (mean=100, SD=5, ACTIVE)..."
+  BS200_LOT_LOG="$(mktemp)"
+  BS200_LOT_CODE=$(curl -sk -o "$BS200_LOT_LOG" -w "%{http_code}" \
+    -X POST -u "${TEST_USER}:${TEST_PASS}" \
+    -H "Content-Type: application/json" \
+    "${BASE_URL}/api/OpenELIS-Global/rest/qc/controlLot" \
+    -d "{
+      \"productName\": \"Glucose Normal Control\",
+      \"lotNumber\": \"LOT-GLU-N\",
+      \"manufacturer\": \"Mindray\",
+      \"controlLevel\": \"NORMAL\",
+      \"testId\": ${GLU_TEST_ID},
+      \"instrumentId\": ${MINDRAY_BS200_INST_ID},
+      \"calculationMethod\": \"MANUFACTURER_FIXED\",
+      \"manufacturerMean\": 100.0,
+      \"manufacturerStdDev\": 5.0,
+      \"activationDate\": \"${ACTIVATION_TS}\",
+      \"expirationDate\": \"2027-12-31T00:00:00Z\",
+      \"unitOfMeasure\": \"mg/dL\"
+    }")
+  case "$BS200_LOT_CODE" in
+    200|201) echo "[seed-qc]   Control lot LOT-GLU-N created (mean=100 mg/dL, SD=5)" ;;
+    409)     echo "[seed-qc]   Control lot LOT-GLU-N already exists (idempotent skip)" ;;
+    *)       echo "[seed-qc]   WARN: LOT-GLU-N POST returned HTTP ${BS200_LOT_CODE}" >&2
+             sed 's/^/    /' "$BS200_LOT_LOG" >&2 ;;
+  esac
+  rm -f "$BS200_LOT_LOG"
+fi
+
+## ── EQA program seed (LO-07-03 unblocker) ──────────────────────────────────
+# The Madagascar UAT V1 round failed LO-07-03 step 13 because the Programme
+# dropdown was empty. Seed one EQA program (idempotent) so the dropdown has
+# at least one entry. HTTP Basic auth verified working on /rest/eqa/my-programs.
+echo
+echo "[seed-qc] Seeding EQA program WHO AFRO HIV-VL Cycle 2026-Q2 (idempotent)..."
+EQA_LOG="$(mktemp)"
+EQA_BODY="$(cat <<EOF
+{
+  "programName": "WHO AFRO HIV-VL Cycle 2026-Q2",
+  "provider": "WHO AFRO",
+  "description": "Quarterly proficiency testing — HIV-1 viral load",
+  "labUnitIds": [],
+  "testIds": [],
+  "panelIds": [],
+  "isActive": true
+}
+EOF
+)"
+EQA_CODE=$(curl -sk -o "$EQA_LOG" -w "%{http_code}" \
+  -X POST -u "${TEST_USER}:${TEST_PASS}" \
+  -H 'Content-Type: application/json' \
+  "${BASE_URL}/api/OpenELIS-Global/rest/eqa/my-programs" \
+  -d "$EQA_BODY")
+case "$EQA_CODE" in
+  200|201) echo "[seed-qc]   EQA program created" ;;
+  409)     echo "[seed-qc]   EQA program already exists (idempotent skip)" ;;
+  *)       echo "[seed-qc]   WARN: EQA POST returned HTTP ${EQA_CODE}" >&2
+           sed 's/^/    /' "$EQA_LOG" >&2 ;;
+esac
+rm -f "$EQA_LOG"
+
 echo
 echo "[seed-qc] Done. Drive QC violations with:"
 echo "  GeneXpert (ASTM):"
-echo "    curl -X POST http://localhost:8085/simulate/astm/genexpert_astm \\"
+echo "    curl -X POST https://mock.mgtest.openelis-global.org/simulate/astm/genexpert_astm \\"
 echo "      -H 'Content-Type: application/json' \\"
 echo "      -d '{\"destination\":\"tcp://openelis-analyzer-bridge:12001\",\"qc\":true,\"qc_deviation\":3.5,\"source_ip\":\"10.42.20.10\"}'"
-echo "    → fires 1₃ₛ rejection (z=3.5)"
+echo "    → fires 1₃ₛ rejection (z=3.5 on LOT-HIVVL-N)"
 echo
-echo "  QuantStudio (FILE upload via bridge UI):"
-echo "    curl -u bridge:changeme -X POST https://localhost:8442/admin/upload \\"
-echo "      -F analyzerId=<QS5-id> -F file=@qadocs/QuantStudio_Failing_QC_Samples/qc-only_01_1-3s.csv"
-echo "    → fires 1₃ₛ on LPC z-score=+3.0 (Ct=33.500 vs mean 32.00, SD 0.50)"
+echo "  QuantStudio 5 (FILE — mock generates CSV + uploads to bridge):"
+echo "    curl -X POST https://mock.mgtest.openelis-global.org/simulate/file/quantstudio5 \\"
+echo "      -H 'Content-Type: application/json' \\"
+echo "      -d '{\"qc\":true,\"qc_deviation\":3.0,\"bridge_upload\":{\"analyzer_id\":\"<QS5-id>\",\"bridge_user\":\"bridge\",\"bridge_pass\":\"changeme\"}}'"
+echo "    → fires 1₃ₛ on LPC at z=3.0 (Ct=33.5 vs mean 32.0, SD 0.5)"
+echo
+echo "  Mindray BS-200 (HL7 over MLLP):"
+echo "    curl -X POST https://mock.mgtest.openelis-global.org/simulate/hl7/mindray_bs200 \\"
+echo "      -H 'Content-Type: application/json' \\"
+echo "      -d '{\"destination\":\"tcp://openelis-analyzer-bridge:2575\",\"qc\":true,\"qc_deviation\":3.5}'"
+echo "    → fires 1₃ₛ on GLU at z=3.5 (115 mg/dL vs mean 100, SD 5)"
