@@ -81,6 +81,18 @@ COMPOSE="docker compose \
   -f compose.dev.yaml \
   -f compose.validate.yaml"
 
+# Layer in the Let's Encrypt overlay when the distro provides one and the
+# deployment has been configured for it. Without this, deployments that rely
+# on LE certs (mgtest et al.) end up with a proxy container that can't find
+# /etc/letsencrypt/live/<cert>/fullchain.pem after a stack restart, since the
+# base compose.yaml doesn't mount the LE volume.
+LE_OVERLAY="${DISTRO_REPO}/compose.letsencrypt.yaml"
+LE_ENV_FILE="${DISTRO_REPO}/.env.letsencrypt"
+if [[ -f "$LE_OVERLAY" && -f "$LE_ENV_FILE" ]]; then
+  echo "[compose] layering Let's Encrypt overlay (${LE_ENV_FILE} found)"
+  COMPOSE="$COMPOSE -f ${LE_OVERLAY}"
+fi
+
 CLEAN_FLAG=""
 REBUILD_FLAG=""
 SEED_HARNESS_FLAG=""
