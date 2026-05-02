@@ -16,6 +16,9 @@ jobs:
   analyzer-validation:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      OE_REPO: ${{ github.workspace }}/OpenELIS-Global-2
+      BRIDGE_REPO: ${{ github.workspace }}/openelis-analyzer-bridge
     steps:
       - name: Checkout harness
         uses: actions/checkout@v4
@@ -26,6 +29,21 @@ jobs:
           repository: DIGI-UW/openelis-madagascar-distro
           ref: ${{ inputs.distro_ref || 'main' }}
           path: distro
+
+      - name: Checkout OE2 (build context for webapp/frontend/db/fhir/proxy/mock)
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/OpenELIS-Global-2
+          ref: develop
+          path: OpenELIS-Global-2
+          submodules: recursive
+
+      - name: Checkout bridge (build context)
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/openelis-analyzer-bridge
+          ref: develop
+          path: openelis-analyzer-bridge
 
       - name: Start validation stack
         run: docker compose ${{ env.COMPOSE_FILES }} up -d
