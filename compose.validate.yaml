@@ -86,7 +86,12 @@ services:
     profiles:
       - demo
     build:
-      context: tests/playwright
+      # ${HARNESS_DEMO_CONTEXT} should be set to an absolute path when this
+      # compose file is layered with another file outside the harness repo
+      # (e.g., distro/compose.yaml as the first -f arg, which makes compose
+      # treat distro/ as the project directory and resolve `tests/playwright`
+      # relative to *that*). CI sets HARNESS_DEMO_CONTEXT=${{ github.workspace }}/tests/playwright.
+      context: ${HARNESS_DEMO_CONTEXT:-tests/playwright}
       dockerfile: Dockerfile
     image: madagascar-demo-tests:local
     # Must match tests/playwright/Dockerfile WORKDIR (files live under /app).

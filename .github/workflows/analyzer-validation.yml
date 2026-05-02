@@ -19,6 +19,11 @@ jobs:
     env:
       OE_REPO: ${{ github.workspace }}/OpenELIS-Global-2
       BRIDGE_REPO: ${{ github.workspace }}/openelis-analyzer-bridge
+      # demo-tests' build context is `tests/playwright`, but compose's
+      # project-dir is `distro/` (parent of first -f arg), so the relative
+      # path resolves to distro/tests/playwright (doesn't exist). Anchor it
+      # absolutely here.
+      HARNESS_DEMO_CONTEXT: ${{ github.workspace }}/tests/playwright
     steps:
       - name: Checkout harness
         uses: actions/checkout@v4
