@@ -24,6 +24,9 @@ jobs:
       # path resolves to distro/tests/playwright (doesn't exist). Anchor it
       # absolutely here.
       HARNESS_DEMO_CONTEXT: ${{ github.workspace }}/tests/playwright
+      # Playwright test-results bind mount also resolves against compose's
+      # project-dir (= distro/), so absolute-path it for upload-artifact.
+      HARNESS_TEST_RESULTS_DIR: ${{ github.workspace }}/test-results
     steps:
       - name: Checkout harness
         uses: actions/checkout@v4
