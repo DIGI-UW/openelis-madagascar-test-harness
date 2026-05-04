@@ -86,7 +86,12 @@ services:
     profiles:
       - demo
     build:
-      context: tests/playwright
+      # ${HARNESS_DEMO_CONTEXT} should be set to an absolute path when this
+      # compose file is layered with another file outside the harness repo
+      # (e.g., distro/compose.yaml as the first -f arg, which makes compose
+      # treat distro/ as the project directory and resolve `tests/playwright`
+      # relative to *that*). CI sets HARNESS_DEMO_CONTEXT=${{ github.workspace }}/tests/playwright.
+      context: ${HARNESS_DEMO_CONTEXT:-tests/playwright}
       dockerfile: Dockerfile
     image: madagascar-demo-tests:local
     # Must match tests/playwright/Dockerfile WORKDIR (files live under /app).
@@ -112,8 +117,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       # Playwright outputDir + html reporter resolve to /app/test-results
       # (config: path.resolve(__dirname, "test-results/test-output")).
-      # Mount there so video/trace/report land on the host.
-      - ./test-results:/app/test-results
+      # Mount there so video/trace/report land on the host. Path resolves
+      # against compose's project-directory; when this overlay is layered
+      # under distro/compose.yaml the project-dir becomes distro/, so set
+      # HARNESS_TEST_RESULTS_DIR to an absolute path in CI to land artifacts
+      # where actions/upload-artifact looks for them.
+      - ${HARNESS_TEST_RESULTS_DIR:-./test-results}:/app/test-results
       # Host filesystem for real analyzer file drops — read-only, matches
       # the same env-var-driven bind mount on webapp + bridge from Phase 1
       # (compose.yaml). On UAT: ANALYZER_HOST_MOUNT=/mnt
