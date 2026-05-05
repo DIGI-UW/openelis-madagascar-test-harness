@@ -10,7 +10,7 @@ on:
         default: "main"
 
 env:
-  COMPOSE_FILES: -f distro/compose.yaml -f compose.dev.yaml -f compose.validate.yaml
+  COMPOSE_FILES: -f distro/docker-compose.yml -f compose.dev.yaml -f compose.validate.yaml
 
 jobs:
   analyzer-validation:
