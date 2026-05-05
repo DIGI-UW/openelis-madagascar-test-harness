@@ -4,9 +4,9 @@ import { execSync } from "child_process";
 /**
  * OGC-654 regression — Validation note persistence (LO-05-05).
  *
- * Drives /AccessionValidation end-to-end against mgtest, types a note into
- * the Notes column for the first pending validation row, ticks Accept,
- * clicks Save, and asserts:
+ * Drives /AccessionValidation end-to-end, types a note into the Notes
+ * column for the seeded validation row, ticks Accept, clicks Save, and
+ * asserts:
  *   1. POST body to /rest/AccessionValidation contains the note
  *   2. clinlims.note row count increments by 1
  *
@@ -15,22 +15,85 @@ import { execSync } from "child_process";
  * found 0 matches and silently dropped the note on input. Fix pre-inits
  * each row's note to "" before passing the form into Validation state.
  *
- * Pre-req: at least one analysis at status_id=15 in the validation queue
- * for ACCESSION below. (Status 15 = "results accepted by technician as
- * being valid" — what /AccessionValidation displays for biologist review.)
+ * Setup: this spec seeds its own validation-queue row directly via SQL —
+ * one minimal patient + sample + analysis chain at analysis.status_id=15
+ * ("Technical Acceptance"). The setup is intentionally outside the UI
+ * (the regression is about the form's note handling, not the operator
+ * workflow that produces a row at status 15). Each run creates a unique
+ * accession so reruns don't collide.
  */
 
-const ACCESSION = "DEV01260000000000001";
 const NOTE_TEXT = `OGC-654-pwt-${Date.now()}`;
 const SHOTS = "/tmp/ogc654-shots";
 
-function noteCount(): number {
-  const out = execSync(
-    `docker exec openelisglobal-database psql -U clinlims -d clinlims -t -A -c "SELECT count(*) FROM clinlims.note;"`,
+function psql(sql: string): string {
+  return execSync(
+    `docker exec openelisglobal-database psql -U clinlims -d clinlims -t -A -c ${JSON.stringify(sql)}`,
   )
     .toString()
     .trim();
-  return parseInt(out, 10);
+}
+
+function noteCount(): number {
+  return parseInt(psql("SELECT count(*) FROM clinlims.note;"), 10);
+}
+
+/**
+ * Seed one analysis at status_id=15 for a unique accession. Returns the
+ * accession_number so the test can navigate directly to its validation
+ * page. NOT-NULL columns only; everything else inherits defaults.
+ *
+ * Status_id semantics (status_of_sample):
+ *   - sample.status_id    = 20 (SampleEntered)
+ *   - sample_item.status_id = 1  (Test Entered — placeholder)
+ *   - analysis.status_id  = 15 (Technical Acceptance — the row /AccessionValidation queries)
+ *
+ * Test row references: test_id pulls from existing `clinlims.test`,
+ * test_sect_id from existing `clinlims.test_section`. Both must be
+ * already seeded by Liquibase + distro CSVs (they are on any healthy
+ * stack).
+ */
+function seedValidationQueueRow(): string {
+  const accession = `OGC654-${Date.now().toString(36)}`;
+  const sql = `
+    WITH
+      new_person AS (
+        INSERT INTO clinlims.person (id, last_name, first_name)
+        VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM clinlims.person), 'OGC654-seed', 'OGC654')
+        RETURNING id
+      ),
+      new_patient AS (
+        INSERT INTO clinlims.patient (id, person_id)
+        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.patient), id FROM new_person
+        RETURNING id
+      ),
+      new_sample AS (
+        INSERT INTO clinlims.sample (id, accession_number, entered_date, received_date, is_confirmation, status_id)
+        VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample), '${accession}', NOW(), NOW(), false, 20)
+        RETURNING id
+      ),
+      new_sh AS (
+        INSERT INTO clinlims.sample_human (id, samp_id, patient_id)
+        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample_human), s.id, p.id
+        FROM new_sample s, new_patient p
+        RETURNING id
+      ),
+      new_si AS (
+        INSERT INTO clinlims.sample_item (id, samp_id, sort_order, status_id)
+        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample_item), id, 1, 1 FROM new_sample
+        RETURNING id
+      ),
+      ref AS (
+        SELECT (SELECT id FROM clinlims.test WHERE is_active='Y' ORDER BY id LIMIT 1) AS test_id,
+               (SELECT id FROM clinlims.test_section ORDER BY id LIMIT 1) AS sect_id
+      )
+    INSERT INTO clinlims.analysis (id, sampitem_id, test_id, test_sect_id, status_id, analysis_type, revision)
+    SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.analysis), si.id, ref.test_id, ref.sect_id, 15, 'MANUAL', 0
+    FROM new_si si, ref
+    RETURNING id;
+  `;
+  psql(sql);
+  return accession;
 }
 
 test.describe("OGC-654 UI-driven note persistence", () => {
@@ -38,6 +101,12 @@ test.describe("OGC-654 UI-driven note persistence", () => {
     page,
   }) => {
     test.setTimeout(60_000);
+
+    // Seed: one analysis at status_id=15 under a unique accession so
+    // /AccessionValidation has at least one Notes row to render. See
+    // seedValidationQueueRow comment for the row chain.
+    const ACCESSION = seedValidationQueueRow();
+    console.log(`[OGC-654] seeded accession: ${ACCESSION}`);
 
     // Capture the actual POST body the FE sends.
     let postBody: any = null;
