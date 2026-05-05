@@ -96,21 +96,79 @@ if ! echo "$AVAILABLE_SERVICES" | grep -qx "$SERVICE"; then
   exit 2
 fi
 
-echo "[1/3] Building $SERVICE (context resolved via compose.dev.yaml)..."
+# Resolve the source repo for this service (locally-built services only).
+# Used for SHA tracking + cache-hit detection. Empty for registry-only
+# services (db / fhir / proxy) — those skip source-sha reporting.
+SOURCE_REPO=""
+case "$SERVICE" in
+  oe.openelis.org|frontend.openelis.org) SOURCE_REPO="$OE_REPO";;
+  openelis-analyzer-bridge)              SOURCE_REPO="$BRIDGE_REPO";;
+esac
+
+SOURCE_SHA=""
+SOURCE_DIRTY=""
+if [[ -n "$SOURCE_REPO" && -d "$SOURCE_REPO/.git" ]]; then
+  SOURCE_SHA="$(git -C "$SOURCE_REPO" rev-parse --short HEAD 2>/dev/null || echo "")"
+  if ! git -C "$SOURCE_REPO" diff-index --quiet HEAD -- 2>/dev/null; then
+    SOURCE_DIRTY=" +dirty"
+  fi
+fi
+
+# Snapshot the image ID compose currently resolves for this service. If the
+# build is a full cache hit, this won't change — that's the signal we want.
+OLD_IMG="$(docker compose "${COMPOSE_FILES[@]}" images -q "$SERVICE" 2>/dev/null | head -n1 || echo "")"
+
+echo "[1/4] Building $SERVICE (context resolved via compose.dev.yaml)..."
 echo "      OE_REPO=$OE_REPO"
 echo "      BRIDGE_REPO=$BRIDGE_REPO"
+if [[ -n "$SOURCE_SHA" ]]; then
+  echo "      source: $SOURCE_REPO @ $SOURCE_SHA$SOURCE_DIRTY"
+fi
 OE_REPO="$OE_REPO" BRIDGE_REPO="$BRIDGE_REPO" DOCKER_BUILDKIT=1 \
   docker compose "${COMPOSE_FILES[@]}" build $NO_CACHE_FLAG "$SERVICE"
 
-echo "[2/3] Recreating $SERVICE container (--no-deps --force-recreate)..."
+NEW_IMG="$(docker compose "${COMPOSE_FILES[@]}" images -q "$SERVICE" 2>/dev/null | head -n1 || echo "")"
+NEW_IMG_CREATED=""
+if [[ -n "$NEW_IMG" ]]; then
+  NEW_IMG_CREATED="$(docker image inspect "$NEW_IMG" --format '{{.Created}}' 2>/dev/null || echo "")"
+fi
+
+echo "[2/4] Build result:"
+echo "      image before: ${OLD_IMG:-<none>}"
+echo "      image after:  ${NEW_IMG:-<none>} (created ${NEW_IMG_CREATED:-?})"
+if [[ -n "$SOURCE_REPO" && -n "$OLD_IMG" && "$OLD_IMG" == "$NEW_IMG" && -z "$NO_CACHE_FLAG" ]]; then
+  echo ""
+  echo "      WARN: build produced no new image (full cache hit)."
+  echo "            If $SOURCE_REPO has changes you expect to land, re-run with --no-cache:"
+  echo "              $0 $SERVICE --no-cache${WAIT_FLAG:+ --wait}"
+  echo ""
+fi
+
+echo "[3/4] Recreating $SERVICE container (--no-deps --force-recreate)..."
 docker compose "${COMPOSE_FILES[@]}" up -d --no-deps --force-recreate "$SERVICE"
 
+# Verify the running container is on the image we just built. If recreate
+# silently no-op'd or attached to a different image, surface it loudly.
+CONTAINER_ID="$(docker compose "${COMPOSE_FILES[@]}" ps -q "$SERVICE" 2>/dev/null | head -n1 || echo "")"
+RUNNING_IMG=""
+if [[ -n "$CONTAINER_ID" ]]; then
+  RUNNING_IMG="$(docker inspect "$CONTAINER_ID" --format '{{.Image}}' 2>/dev/null | sed 's/^sha256://' | cut -c1-12 || echo "")"
+fi
+NEW_IMG_SHORT="$(echo "$NEW_IMG" | sed 's/^sha256://' | cut -c1-12)"
+echo "      running image: ${RUNNING_IMG:-<none>} (built: ${NEW_IMG_SHORT:-<none>})"
+if [[ -n "$NEW_IMG_SHORT" && -n "$RUNNING_IMG" && "$RUNNING_IMG" != "$NEW_IMG_SHORT" ]]; then
+  echo ""
+  echo "      FAIL: running container's image ($RUNNING_IMG) does not match the image just built ($NEW_IMG_SHORT)."
+  echo "            Recreate may have failed silently, or another stack is intercepting the service name."
+  exit 1
+fi
+
 if [[ -z "$WAIT_FLAG" ]]; then
-  echo "[3/3] Done. (Skip readiness wait — pass --wait if you need /health + ValidateLogin to confirm.)"
+  echo "[4/4] Done. (Skip readiness wait — pass --wait if you need /health + ValidateLogin to confirm.)"
   exit 0
 fi
 
-echo "[3/3] Waiting for stack readiness (same probe as restart-stack.sh)..."
+echo "[4/4] Waiting for stack readiness (same probe as restart-stack.sh)..."
 TEST_USER="${TEST_USER:-admin}"
 TEST_PASS="${TEST_PASS:-adminADMIN!}"
 for i in $(seq 1 60); do
