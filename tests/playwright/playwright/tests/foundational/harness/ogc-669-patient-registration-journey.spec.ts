@@ -55,9 +55,10 @@ const FOKONTANY = `${RUN_ID}-fkt`;
 const HAMLET_OR_LOT = `${RUN_ID}-hml`;
 const GPS_LAT = "-18.879190";
 const GPS_LONG = "47.507905";
-// Yup validator at CreatePatientValidationShema:8 requires `dd/mm/yyyy` or
-// `mm/dd/yyyy` — must be slash-separated, NOT ISO dashes.
-const BIRTH_DATE_VALUE = "15/05/1990";
+// flatpickr's setDate accepts ISO yyyy-mm-dd most reliably. The
+// CustomDatePicker formats the parsed date back to mm/dd/yyyy on commit,
+// which is what the Yup validator checks.
+const BIRTH_DATE_VALUE = "1990-05-15";
 
 // Fetch the saved patient row by name and return the address fields.
 function fetchPersonByName(first: string, last: string) {
@@ -181,6 +182,14 @@ test.describe("OGC-669 patient registration UX journey", () => {
         console.log(`[browser ${msg.type()}] ${msg.text()}`);
       }
     });
+    page.on("pageerror", (err) =>
+      console.log(`[pageerror] ${err.message}`),
+    );
+    page.on("request", (req) => {
+      if (req.method() === "POST") {
+        console.log(`[POST request] ${req.url()}`);
+      }
+    });
     page.on("requestfailed", (req) =>
       console.log(`[network failed] ${req.method()} ${req.url()}`),
     );
@@ -215,13 +224,55 @@ test.describe("OGC-669 patient registration UX journey", () => {
       saveBtn.click(),
     ]);
 
+    // If no POST fired, dump everything we can about why.
+    if (!postResp) {
+      await page.waitForTimeout(2000);
+      const postClickState = await page.evaluate(() => {
+        const errorDivs = Array.from(
+          document.querySelectorAll("div, span, p, label"),
+        )
+          .map((el) => ({
+            cls: (el.className as string) || "",
+            text: el.textContent?.trim() ?? "",
+          }))
+          .filter(
+            (x) =>
+              typeof x.cls === "string" &&
+              (x.cls.includes("error") ||
+                x.cls.includes("invalid") ||
+                x.cls.includes("required")) &&
+              x.text &&
+              x.text.length < 200,
+          );
+        const submitBtn = document.querySelector("#submit") as HTMLButtonElement;
+        return {
+          submitDisabled: submitBtn?.disabled,
+          submitVisible: submitBtn?.offsetParent !== null,
+          errorElements: errorDivs.slice(0, 10),
+        };
+      });
+      console.log(
+        `[${RUN_ID}] post-click diagnostic:`,
+        JSON.stringify(postClickState, null, 2),
+      );
+    }
+
     expect(
       postResp,
       "Save must fire POST /rest/PatientManagement",
     ).not.toBeNull();
+
+    // Capture response body so failures show backend error detail.
+    const respBody = await postResp!.text().catch(() => "");
+    if (postResp!.status() >= 400) {
+      console.log(
+        `[${RUN_ID}] POST ${postResp!.status()} body (first 800 chars): ${respBody.substring(0, 800)}`,
+      );
+    }
+
     expect(
       postResp!.status(),
-      `Save POST should succeed, got ${postResp!.status()}`,
+      `Save POST should succeed (got ${postResp!.status()}). Body: ${respBody.substring(0, 500)}`,
     ).toBeLessThan(400);
 
     // 12. Allow persistence to settle, then read back.

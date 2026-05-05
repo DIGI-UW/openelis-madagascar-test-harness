@@ -81,23 +81,11 @@ export async function clickCarbonRadio(
   inputId: string,
   options: { timeout?: number; commitFocusSelector?: string } = {},
 ): Promise<void> {
-  const input = page.locator(`input#${inputId}`);
-  await expect(input).toHaveCount(1, {
+  const label = page.locator(`label[for="${inputId}"]`);
+  await expect(label).toHaveCount(1, {
     timeout: options.timeout ?? SHORT_TIMEOUT,
   });
-  await input.evaluate((el: HTMLInputElement) => {
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "checked",
-    )?.set;
-    if (setter) {
-      setter.call(el, true);
-    } else {
-      el.checked = true;
-    }
-    el.dispatchEvent(new Event("click", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  await label.first().click({ force: true });
   if (options.commitFocusSelector) {
     await page.locator(options.commitFocusSelector).first().focus();
   } else {
@@ -110,7 +98,12 @@ export async function clickCarbonRadio(
  * id="date-picker-default-id"; pass a `scope` locator if multiple date
  * pickers share the page (otherwise .first() picks the visible one).
  *
- * Format must be dd/mm/yyyy or mm/dd/yyyy with slashes.
+ * Calls flatpickr's setDate API directly via the instance attached to the
+ * input element as `_flatpickr`. Plain .fill() doesn't reliably fire
+ * flatpickr's onChange; setDate with the second arg true does.
+ *
+ * Pass `value` in any flatpickr-parseable format. ISO yyyy-mm-dd is the
+ * most reliable.
  */
 export async function fillCarbonDatePicker(
   page: Page,
@@ -122,8 +115,16 @@ export async function fillCarbonDatePicker(
   await expect(locator).toBeVisible({
     timeout: options.timeout ?? UI_TIMEOUT,
   });
-  await locator.fill(value);
-  await locator.press("Tab");
+  await locator.evaluate((el: HTMLInputElement & { _flatpickr?: any }, v) => {
+    if (el._flatpickr) {
+      el._flatpickr.setDate(v, true);
+    } else {
+      // Fallback if flatpickr isn't attached yet — type the value and blur.
+      el.value = v;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }, value);
 }
 
 /**
