@@ -33,36 +33,10 @@ function noteCount(): number {
   return parseInt(out, 10);
 }
 
-function pendingValidationRowCount(): number {
-  try {
-    const out = execSync(
-      `docker exec openelisglobal-database psql -U clinlims -d clinlims -t -A -c "SELECT count(*) FROM clinlims.analysis WHERE status_id=15;"`,
-    )
-      .toString()
-      .trim();
-    return parseInt(out, 10);
-  } catch {
-    // DB container unreachable — let the test fail naturally so the cause is visible.
-    return -1;
-  }
-}
-
 test.describe("OGC-654 UI-driven note persistence", () => {
   test("type note + tick accept + save → note persists in clinlims.note", async ({
     page,
   }) => {
-    // Skip when the prereq (a pending validation row) isn't met. This spec
-    // is a regression locker for the OE2 fix in SearchForm.jsx — only
-    // meaningful against a stack that already has analyses at status_id=15.
-    // mgtest has these from manual operator workflow; CI's freshly-stood-up
-    // stack does not. Skip-on-empty preserves discoverability without
-    // failing the build.
-    const pendingCount = pendingValidationRowCount();
-    test.skip(
-      pendingCount === 0,
-      "OGC-654 requires a pending validation row in clinlims.analysis (status_id=15); none seeded on this stack.",
-    );
-
     test.setTimeout(60_000);
 
     // Capture the actual POST body the FE sends.
