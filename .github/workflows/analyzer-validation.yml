@@ -8,6 +8,14 @@ on:
         description: "Distro ref to validate against (branch, tag, or SHA)"
         required: false
         default: "main"
+      oe_ref:
+        description: "OE2 ref to checkout for seed scripts (branch, tag, or SHA)"
+        required: false
+        default: "develop"
+      bridge_ref:
+        description: "Bridge ref to checkout for seed scripts (branch, tag, or SHA)"
+        required: false
+        default: "develop"
 
 env:
   COMPOSE_FILES: -f distro/docker-compose.yml -f compose.dev.yaml -f compose.validate.yaml
@@ -27,27 +35,38 @@ jobs:
           ref: ${{ inputs.distro_ref || 'main' }}
           path: distro
 
-      - name: Start validation stack
-        run: docker compose ${{ env.COMPOSE_FILES }} up -d
+      - name: Checkout OE2 (for seed-analyzers.sh + seed scripts)
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/OpenELIS-Global-2
+          ref: ${{ inputs.oe_ref || 'develop' }}
+          path: OpenELIS-Global-2
 
-      - name: Wait for core services
-        run: |
-          set -euo pipefail
-          max_attempts=60
-          attempt=1
-          while [ "$attempt" -le "$max_attempts" ]; do
-            healthy_count="$(docker compose ${{ env.COMPOSE_FILES }} ps --format json | jq -r 'select(.Health == "healthy") | .Service' | wc -l)"
-            if [ "$healthy_count" -ge 3 ]; then
-              echo "Core services are healthy"
-              exit 0
-            fi
-            echo "Waiting for services to become healthy ($attempt/$max_attempts)"
-            sleep 5
-            attempt=$((attempt + 1))
-          done
-          echo "Timed out waiting for healthy services"
-          docker compose ${{ env.COMPOSE_FILES }} ps
-          exit 1
+      - name: Checkout analyzer bridge (for restart-stack BRIDGE_REPO)
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/openelis-analyzer-bridge
+          ref: ${{ inputs.bridge_ref || 'develop' }}
+          path: openelis-analyzer-bridge
+
+      # Bring up the stack via the SAME script local dev uses, so CI stays
+      # honest with operator-facing flow. --clean wipes any leftover state;
+      # --seed-harness runs OE2's seed-analyzers.sh against the running
+      # stack (registry-API seeding, no Liquibase). restart-stack.sh's
+      # internal /health + ValidateLogin probe is the readiness contract.
+      - name: Bring up stack via restart-stack.sh
+        env:
+          DISTRO_REPO: ${{ github.workspace }}/distro
+          OE_REPO: ${{ github.workspace }}/OpenELIS-Global-2
+          BRIDGE_REPO: ${{ github.workspace }}/openelis-analyzer-bridge
+        run: ./scripts/restart-stack.sh --clean --seed-harness
+
+      # QC config seed (control lots, Westgard rules) — required for any
+      # test that exercises the QC pipeline end-to-end. Idempotent.
+      - name: Seed QC config via seed-qc.sh
+        env:
+          BASE_URL: https://localhost
+        run: ./scripts/seed-qc.sh
 
       - name: API contract smoke tests
         id: api_contract

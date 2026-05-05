@@ -76,8 +76,19 @@ if [[ -z "$DISTRO_REPO" || ! -d "$DISTRO_REPO" ]]; then
 fi
 echo "[distro] using $DISTRO_REPO"
 
+# Distro's canonical compose is docker-compose.yml. Local mgtest devs
+# maintain a sibling compose.yaml with :local pins for fast rebuild — that
+# file is gitignored (saved memory: distro compose.yaml is local-only).
+# Prefer the local override when present; fall back to the canonical file.
+if [[ -f "${DISTRO_REPO}/compose.yaml" ]]; then
+  DISTRO_COMPOSE="${DISTRO_REPO}/compose.yaml"
+else
+  DISTRO_COMPOSE="${DISTRO_REPO}/docker-compose.yml"
+fi
+echo "[distro] compose file: $DISTRO_COMPOSE"
+
 COMPOSE="docker compose \
-  -f ${DISTRO_REPO}/compose.yaml \
+  -f ${DISTRO_COMPOSE} \
   -f compose.dev.yaml \
   -f compose.validate.yaml"
 

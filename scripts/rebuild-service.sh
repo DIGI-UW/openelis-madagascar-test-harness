@@ -82,8 +82,16 @@ fi
 OE_REPO="${OE_REPO:-$(realpath "$ROOT/../OpenELIS-Global-2" 2>/dev/null || echo "")}"
 BRIDGE_REPO="${BRIDGE_REPO:-$(realpath "$ROOT/../openelis-analyzer-bridge" 2>/dev/null || echo "")}"
 
+# Prefer the local override compose.yaml when present (mgtest dev pattern
+# with :local pins); fall back to the canonical docker-compose.yml from
+# distro. Saved memory: distro compose.yaml is local-only.
+if [[ -f "${DISTRO_REPO}/compose.yaml" ]]; then
+  DISTRO_COMPOSE="${DISTRO_REPO}/compose.yaml"
+else
+  DISTRO_COMPOSE="${DISTRO_REPO}/docker-compose.yml"
+fi
 COMPOSE_FILES=(
-  -f "${DISTRO_REPO}/compose.yaml"
+  -f "${DISTRO_COMPOSE}"
   -f compose.dev.yaml
 )
 
