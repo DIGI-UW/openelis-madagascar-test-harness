@@ -58,7 +58,10 @@ function noteCount(): number {
  * stack).
  */
 function seedValidationQueueRow(): string {
-  const accession = `OGC654-${Date.now().toString(36)}`;
+  // No dashes in the accession: SearchForm.jsx:121 splits on `-` and uses
+  // only the prefix, so "OGC654-abc" gets searched as "OGC654" — backend
+  // returns nothing and the page renders empty.
+  const accession = `OGC654x${Date.now().toString(36)}`;
   const sql = `
     WITH
       new_person AS (
