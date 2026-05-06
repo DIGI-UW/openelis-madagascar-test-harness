@@ -92,11 +92,18 @@ function seedValidationQueueRow(): string {
       ),
       ref AS (
         SELECT (SELECT id FROM clinlims.test WHERE is_active='Y' ORDER BY id LIMIT 1) AS test_id,
-               (SELECT id FROM clinlims.test_section ORDER BY id LIMIT 1) AS sect_id
+               (SELECT id FROM clinlims.test_section ORDER BY id LIMIT 1) AS sect_id,
+               (SELECT id FROM clinlims.test_result WHERE test_id=(SELECT id FROM clinlims.test WHERE is_active='Y' ORDER BY id LIMIT 1) ORDER BY id LIMIT 1) AS test_result_id
+      ),
+      new_analysis AS (
+        INSERT INTO clinlims.analysis (id, sampitem_id, test_id, test_sect_id, status_id, analysis_type, revision)
+        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.analysis), si.id, ref.test_id, ref.sect_id, 15, 'MANUAL', 0
+        FROM new_si si, ref
+        RETURNING id
       )
-    INSERT INTO clinlims.analysis (id, sampitem_id, test_id, test_sect_id, status_id, analysis_type, revision)
-    SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.analysis), si.id, ref.test_id, ref.sect_id, 15, 'MANUAL', 0
-    FROM new_si si, ref
+    INSERT INTO clinlims.result (id, analysis_id, result_type, value, test_result_id, sort_order)
+    SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.result), a.id, 'N', '25.0', ref.test_result_id, 0
+    FROM new_analysis a, ref
     RETURNING id;
   `;
   psql(sql);
