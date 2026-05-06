@@ -62,32 +62,36 @@ function seedValidationQueueRow(): string {
   // only the prefix, so "OGC654-abc" gets searched as "OGC654" — backend
   // returns nothing and the page renders empty.
   const accession = `OGC654x${Date.now().toString(36)}`;
+  // EVERY entity in this chain uses `lastupdated` as its Hibernate
+  // <version> column for optimistic locking. Inserting with NULL
+  // lastupdated makes Hibernate's update path think the row is stale on
+  // first save → StaleStateException → 500. Set NOW() on each row.
   const sql = `
     WITH
       new_person AS (
-        INSERT INTO clinlims.person (id, last_name, first_name)
-        VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM clinlims.person), 'OGC654-seed', 'OGC654')
+        INSERT INTO clinlims.person (id, last_name, first_name, lastupdated)
+        VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM clinlims.person), 'OGC654-seed', 'OGC654', NOW())
         RETURNING id
       ),
       new_patient AS (
-        INSERT INTO clinlims.patient (id, person_id)
-        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.patient), id FROM new_person
+        INSERT INTO clinlims.patient (id, person_id, lastupdated)
+        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.patient), id, NOW() FROM new_person
         RETURNING id
       ),
       new_sample AS (
-        INSERT INTO clinlims.sample (id, accession_number, entered_date, received_date, is_confirmation, status_id)
-        VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample), '${accession}', NOW(), NOW(), false, 20)
+        INSERT INTO clinlims.sample (id, accession_number, entered_date, received_date, is_confirmation, status_id, lastupdated, sys_user_id)
+        VALUES ((SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample), '${accession}', NOW(), NOW(), false, 20, NOW(), 1)
         RETURNING id
       ),
       new_sh AS (
-        INSERT INTO clinlims.sample_human (id, samp_id, patient_id)
-        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample_human), s.id, p.id
+        INSERT INTO clinlims.sample_human (id, samp_id, patient_id, lastupdated)
+        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample_human), s.id, p.id, NOW()
         FROM new_sample s, new_patient p
         RETURNING id
       ),
       new_si AS (
-        INSERT INTO clinlims.sample_item (id, samp_id, sort_order, status_id)
-        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample_item), id, 1, 1 FROM new_sample
+        INSERT INTO clinlims.sample_item (id, samp_id, sort_order, status_id, lastupdated)
+        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.sample_item), id, 1, 1, NOW() FROM new_sample
         RETURNING id
       ),
       ref AS (
@@ -96,13 +100,13 @@ function seedValidationQueueRow(): string {
                (SELECT id FROM clinlims.test_result WHERE test_id=(SELECT id FROM clinlims.test WHERE is_active='Y' ORDER BY id LIMIT 1) ORDER BY id LIMIT 1) AS test_result_id
       ),
       new_analysis AS (
-        INSERT INTO clinlims.analysis (id, sampitem_id, test_id, test_sect_id, status_id, analysis_type, revision)
-        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.analysis), si.id, ref.test_id, ref.sect_id, 15, 'MANUAL', 0
+        INSERT INTO clinlims.analysis (id, sampitem_id, test_id, test_sect_id, status_id, analysis_type, revision, lastupdated)
+        SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.analysis), si.id, ref.test_id, ref.sect_id, 15, 'MANUAL', 0, NOW()
         FROM new_si si, ref
         RETURNING id
       )
-    INSERT INTO clinlims.result (id, analysis_id, result_type, value, test_result_id, sort_order)
-    SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.result), a.id, 'N', '25.0', ref.test_result_id, 0
+    INSERT INTO clinlims.result (id, analysis_id, result_type, value, test_result_id, sort_order, lastupdated)
+    SELECT (SELECT COALESCE(MAX(id),0)+1 FROM clinlims.result), a.id, 'N', '25.0', ref.test_result_id, 0, NOW()
     FROM new_analysis a, ref
     RETURNING id;
   `;
