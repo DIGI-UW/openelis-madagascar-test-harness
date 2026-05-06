@@ -27,8 +27,12 @@ const NOTE_TEXT = `OGC-654-pwt-${Date.now()}`;
 const SHOTS = "/tmp/ogc654-shots";
 
 function psql(sql: string): string {
+  // psql's `-c` arg parses backslash-commands at the start of each line, so
+  // a multi-line string with `\n` escape sequences produces "invalid command
+  // \n". Collapse whitespace to single-line before forwarding.
+  const oneLine = sql.replace(/\s+/g, " ").trim();
   return execSync(
-    `docker exec openelisglobal-database psql -U clinlims -d clinlims -t -A -c ${JSON.stringify(sql)}`,
+    `docker exec openelisglobal-database psql -U clinlims -d clinlims -t -A -c ${JSON.stringify(oneLine)}`,
   )
     .toString()
     .trim();
