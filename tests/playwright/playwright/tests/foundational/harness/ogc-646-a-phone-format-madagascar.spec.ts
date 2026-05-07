@@ -1,32 +1,20 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * OGC-646-a regression — PhoneNumberValidationProvider accepts Madagascar
- * format `+261-33-456-76-98` (LO-01-01 Sample Patient Entry).
+ * OGC-671 regression — PhoneNumberValidationProvider accepts the Madagascar
+ * 37/38 formats with spaces, dashes, or no separators.
  *
- * Original bug: distro's PHONE_FORMAT was `+261-XX-XXX-XX-XX` (uppercase).
- * PhoneNumberService.buildRegEx in OE2 does `replaceAll("[a-z]", "\\d")` —
- * case-SENSITIVE. Uppercase X stays literal, making the regex require the
- * user to type "XX" rather than digits, so Casey's `+261-33-456-76-98` was
- * rejected.
- *
- * Fix (distro-only, SystemConfiguration.properties:82): lowercase the
- * placeholders → `+261-xx-xxx-xx-xx`.
- *
- * This spec drives the auth-protected REST endpoint via the Playwright
- * `request` API (which carries the JSESSIONID + CSRF cookie set by
- * auth.setup.ts) and asserts the validator returns a success response for
- * the Madagascar number AND a failure response for an obviously-wrong number.
+ * This supersedes the earlier OGC-646 `+261-33-...` expectation. OGC-671
+ * narrows Madagascar patient registration to `+261 37 XX XXX XX` and
+ * `+261 38 XX XXX XX`.
  */
 
 const VALIDATE_URL =
   "/api/OpenELIS-Global/rest/PhoneNumberValidationProvider";
 
-test.describe("OGC-646-a PhoneNumberValidationProvider — Madagascar format", () => {
-  test("accepts +261-33-456-76-98 (Casey's repro number)", async ({
-    request,
-  }) => {
-    const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent("+261-33-456-76-98")}`;
+test.describe("OGC-671 PhoneNumberValidationProvider — Madagascar 37/38 format", () => {
+  test("accepts +261 37 with spaces", async ({ request }) => {
+    const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent("+261 37 12 345 67")}`;
     const resp = await request.get(url);
     expect(
       resp.status(),
@@ -47,19 +35,27 @@ test.describe("OGC-646-a PhoneNumberValidationProvider — Madagascar format", (
     expect(parsed.body).toMatch(/valid/i);
   });
 
-  test("rejects an obviously-malformed number (positive control)", async ({
+  test("accepts +261 37/38 with flexible separators", async ({
     request,
   }) => {
-    // Sanity: an empty or impossibly-short number should fail validation
-    // (or be treated as non-applicable) — proves the endpoint actually
-    // discriminates between inputs and isn't always returning success.
-    const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent("XYZ")}`;
+    for (const value of ["+261371234567", "+261-38-99-888-77"]) {
+      const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent(value)}`;
+      const resp = await request.get(url);
+      expect(resp.status()).toBeLessThan(400);
+      const body = await resp.text();
+      console.log(`[OGC-671 accept] ${value}: ${body.substring(0, 300)}`);
+      expect(JSON.parse(body).status, `${value} should be accepted`).toBe(true);
+    }
+  });
+
+  test("rejects legacy +261 33 numbers under OGC-671", async ({ request }) => {
+    const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent("+261-33-456-76-98")}`;
     const resp = await request.get(url);
     expect(resp.status()).toBeLessThan(500);
     const body = await resp.text();
-    console.log(`[OGC-646-a reject] body for XYZ: ${body.substring(0, 300)}`);
-    // Specifically NOT asserting "success: false" because the endpoint shape
-    // varies; only checking the endpoint is reachable AND returns differently
-    // for invalid input vs the Madagascar number.
+    console.log(`[OGC-671 reject] body for legacy 33: ${body.substring(0, 300)}`);
+    expect(JSON.parse(body).status, "legacy +261 33 must be rejected").toBe(
+      false,
+    );
   });
 });

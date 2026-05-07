@@ -16,12 +16,11 @@ import {
 import { execSync } from "child_process";
 
 /**
- * OGC-669 — Madagascar patient registration UX journey.
+ * OGC-669 / OGC-671 — Madagascar patient registration UX journey.
  *
  * End-to-end test that a Madagascar admin can register a new patient with
- * the full 5-level address hierarchy (Province / Region / District / Fokontany
- * / Hamlet/Lot) plus GPS coordinates, save, and have all values land in
- * `clinlims.person`.
+ * OGC-671 registration config (optional National ID, Alias, 37/38 phone label,
+ * CIN document title) plus the full 5-level address hierarchy and GPS.
  *
  * Exercises the integration between:
  *   - distro `madagascar-levels.csv` (declares 3 dropdown + 2 freetext)
@@ -49,8 +48,8 @@ function letterSuffix(): string {
 const SUFFIX = letterSuffix();
 const FIRST_NAME = `Reg${SUFFIX}`;
 const LAST_NAME = `Journey${SUFFIX}`;
-const NATIONAL_ID = `NID-${Date.now()}`;
-const PRIMARY_PHONE = "+261-33-456-76-98"; // Madagascar format
+const ALIAS = `Alias${SUFFIX}`;
+const PRIMARY_PHONE = "+261 37 12 345 67"; // OGC-671 Madagascar format
 const FOKONTANY = `${RUN_ID}-fkt`;
 const HAMLET_OR_LOT = `${RUN_ID}-hml`;
 const GPS_LAT = "-18.879190";
@@ -120,9 +119,20 @@ test.describe("OGC-669 patient registration UX journey", () => {
 
     // 4. Required fields — helpers in `carbon-form.ts` encapsulate Carbon's
     //    fill+commit, radio-via-label, and date-picker quirks.
+    await expect(
+      page.locator('label[for="nationalId"] .requiredlabel'),
+      "National ID should be optional for Madagascar",
+    ).toHaveCount(0);
     await fillCarbonInput({ page, selector: "input#firstName" }, FIRST_NAME);
     await fillCarbonInput({ page, selector: "input#lastName" }, LAST_NAME);
-    await fillCarbonInput({ page, selector: "input#nationalId" }, NATIONAL_ID);
+    await expect(page.locator("input#aka"), "Alias field should render").toBeVisible();
+    await fillCarbonInput({ page, selector: "input#aka" }, ALIAS);
+    await expect(page.locator('label[for="primaryPhone"]')).toContainText(
+      "+261 37 XX XXX XX",
+    );
+    await expect(page.locator('label[for="primaryPhone"]')).toContainText(
+      "+261 38 XX XXX XX",
+    );
     await fillCarbonInput(
       { page, selector: "input#primaryPhone" },
       PRIMARY_PHONE,
@@ -142,6 +152,37 @@ test.describe("OGC-669 patient registration UX journey", () => {
     await page
       .getByRole("button", { name: /additional information/i })
       .click();
+
+    await expect(
+      page.getByRole("button", { name: /identification documents \(e\.g\. cin\)/i }),
+    ).toBeVisible();
+
+    await expect(page.locator("#fokontany")).toBeVisible();
+    await expect(page.locator("#hamletOrLot")).toBeVisible();
+    const addressFieldOrder = await page.evaluate(() => {
+      const ids = [
+        "fokontany",
+        "hamletOrLot",
+        "address_hierarchy_0",
+        "address_hierarchy_1",
+        "address_hierarchy_2",
+      ];
+      return ids
+        .map((id) => {
+          const el = document.getElementById(id);
+          if (!el) return { id, top: Number.POSITIVE_INFINITY };
+          return { id, top: el.getBoundingClientRect().top };
+        })
+        .sort((left, right) => left.top - right.top)
+        .map((entry) => entry.id);
+    });
+    expect(addressFieldOrder).toEqual([
+      "fokontany",
+      "hamletOrLot",
+      "address_hierarchy_0",
+      "address_hierarchy_1",
+      "address_hierarchy_2",
+    ]);
 
     // 6-8. Cascading address dropdowns (3 levels: Province, Region, District).
     //      Each has id `address_hierarchy_${i}`. Cascade-disabled until parent
@@ -198,6 +239,7 @@ test.describe("OGC-669 patient registration UX journey", () => {
       firstName: "input#firstName",
       lastName: "input#lastName",
       nationalId: "input#nationalId",
+      aka: "input#aka",
       birthDate: "input#date-picker-default-id",
       primaryPhone: "input#primaryPhone",
       genderM: 'input#radio-1:checked',
