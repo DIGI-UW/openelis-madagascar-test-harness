@@ -29,8 +29,7 @@ import { execSync } from "child_process";
  *   - OE2 `/rest/address-hierarchy/levels` API (exposes inputType per level)
  *   - `CreatePatientForm.jsx` renderer (branches on inputType)
  *   - OE2 PatientManagementUpdate persistence
- *   - Postgres `clinlims.person` schema (province / fokontany / hamlet_or_lot
- *     columns)
+ *   - generic ADDRESS_HIERARCHY_N patient_identity persistence
  *
  * The journey, not the wiring, is what's tested here. Wiring regressions
  * are caught by the vitest specs in OE2.
@@ -62,11 +61,33 @@ const BIRTH_DATE_VALUE = "1990-05-15";
 // Fetch the saved patient row by name and return the address fields.
 function fetchPersonByName(first: string, last: string) {
   const sql = `
-    SELECT first_name, last_name, province, fokontany, hamlet_or_lot,
-           gps_latitude::text, gps_longitude::text
-    FROM clinlims.person
-    WHERE first_name = '${first}' AND last_name = '${last}'
-    ORDER BY id DESC
+    SELECT pe.first_name, pe.last_name,
+           ah0.identity_data AS address_hierarchy_0,
+           ah3.identity_data AS address_hierarchy_3,
+           ah4.identity_data AS address_hierarchy_4,
+           pe.gps_latitude::text, pe.gps_longitude::text
+    FROM clinlims.person pe
+    JOIN clinlims.patient p ON p.person_id = pe.id
+    LEFT JOIN clinlims.patient_identity ah0
+      ON ah0.patient_id = p.id
+     AND ah0.identity_type_id = (
+       SELECT id FROM clinlims.patient_identity_type
+       WHERE identity_type = 'ADDRESS_HIERARCHY_0'
+     )
+    LEFT JOIN clinlims.patient_identity ah3
+      ON ah3.patient_id = p.id
+     AND ah3.identity_type_id = (
+       SELECT id FROM clinlims.patient_identity_type
+       WHERE identity_type = 'ADDRESS_HIERARCHY_3'
+     )
+    LEFT JOIN clinlims.patient_identity ah4
+      ON ah4.patient_id = p.id
+     AND ah4.identity_type_id = (
+       SELECT id FROM clinlims.patient_identity_type
+       WHERE identity_type = 'ADDRESS_HIERARCHY_4'
+     )
+    WHERE pe.first_name = '${first}' AND pe.last_name = '${last}'
+    ORDER BY pe.id DESC
     LIMIT 1;
   `;
   const out = execSync(
@@ -78,18 +99,18 @@ function fetchPersonByName(first: string, last: string) {
   const [
     firstName,
     lastName,
-    province,
-    fokontany,
-    hamletOrLot,
+    addressHierarchy0,
+    addressHierarchy3,
+    addressHierarchy4,
     gpsLatitude,
     gpsLongitude,
   ] = out.split("|");
   return {
     firstName,
     lastName,
-    province: province || null,
-    fokontany: fokontany || null,
-    hamletOrLot: hamletOrLot || null,
+    addressHierarchy0: addressHierarchy0 || null,
+    addressHierarchy3: addressHierarchy3 || null,
+    addressHierarchy4: addressHierarchy4 || null,
     gpsLatitude: gpsLatitude || null,
     gpsLongitude: gpsLongitude || null,
   };
@@ -157,12 +178,12 @@ test.describe("OGC-669 patient registration UX journey", () => {
       page.getByRole("button", { name: /identification documents \(e\.g\. cin\)/i }),
     ).toBeVisible();
 
-    await expect(page.locator("#fokontany")).toBeVisible();
-    await expect(page.locator("#hamletOrLot")).toBeVisible();
+    await expect(page.locator("#addressHierarchy_3")).toBeVisible();
+    await expect(page.locator("#addressHierarchy_4")).toBeVisible();
     const addressFieldOrder = await page.evaluate(() => {
       const ids = [
-        "fokontany",
-        "hamletOrLot",
+        "addressHierarchy_3",
+        "addressHierarchy_4",
         "address_hierarchy_0",
         "address_hierarchy_1",
         "address_hierarchy_2",
@@ -177,8 +198,8 @@ test.describe("OGC-669 patient registration UX journey", () => {
         .map((entry) => entry.id);
     });
     expect(addressFieldOrder).toEqual([
-      "fokontany",
-      "hamletOrLot",
+      "addressHierarchy_3",
+      "addressHierarchy_4",
       "address_hierarchy_0",
       "address_hierarchy_1",
       "address_hierarchy_2",
@@ -204,8 +225,8 @@ test.describe("OGC-669 patient registration UX journey", () => {
     );
 
     // 9. Freetext sub-fokontany fields (rendered by CSV-driven inputType=freetext).
-    await fillCarbonInput({ page, selector: "#fokontany" }, FOKONTANY);
-    await fillCarbonInput({ page, selector: "#hamletOrLot" }, HAMLET_OR_LOT);
+    await fillCarbonInput({ page, selector: "#addressHierarchy_3" }, FOKONTANY);
+    await fillCarbonInput({ page, selector: "#addressHierarchy_4" }, HAMLET_OR_LOT);
 
     // 10. GPS Lat/Long (gated by PATIENT_GPS_CAPTURE_ENABLED=true distro-side).
     await fillCarbonInput({ page, selector: "#gpsLatitude" }, GPS_LAT);
@@ -244,8 +265,8 @@ test.describe("OGC-669 patient registration UX journey", () => {
       primaryPhone: "input#primaryPhone",
       genderM: 'input#radio-1:checked',
       genderF: 'input#radio-2:checked',
-      fokontany: "#fokontany",
-      hamletOrLot: "#hamletOrLot",
+      addressHierarchy3: "#addressHierarchy_3",
+      addressHierarchy4: "#addressHierarchy_4",
       gpsLatitude: "#gpsLatitude",
       gpsLongitude: "#gpsLongitude",
       addr0: "#address_hierarchy_0",
@@ -325,13 +346,16 @@ test.describe("OGC-669 patient registration UX journey", () => {
 
     expect(row, `person row for ${FIRST_NAME} ${LAST_NAME} must exist`)
       .not.toBeNull();
-    expect(row!.fokontany, "fokontany column must persist").toBe(FOKONTANY);
-    expect(row!.hamletOrLot, "hamlet_or_lot column must persist").toBe(
+    expect(row!.addressHierarchy3, "ADDRESS_HIERARCHY_3 must persist").toBe(
+      FOKONTANY,
+    );
+    expect(row!.addressHierarchy4, "ADDRESS_HIERARCHY_4 must persist").toBe(
       HAMLET_OR_LOT,
     );
-    // Province column is set via the cascade's typeName-based sync at
-    // CreatePatientForm.jsx:1531-1551 — non-null is the meaningful assertion.
-    expect(row!.province, "province column must persist non-null").not.toBeNull();
+    expect(
+      row!.addressHierarchy0,
+      "ADDRESS_HIERARCHY_0 must persist non-null",
+    ).not.toBeNull();
     expect(
       Number(row!.gpsLatitude),
       "gps_latitude must round-trip as numeric",
