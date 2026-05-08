@@ -32,9 +32,9 @@ and comments in the new template repo only:
 - `tests/playwright/playwright/tests/foundational/harness/api-endpoint-contract.spec.ts`
 - `tests/playwright/playwright/tests/foundational/harness/file-and-results-helpers.spec.ts`
 
-The harness template should add `distro.lock.yml` as the stable pointer to the
-distro under test, then refactor scripts/workflows to read it instead of
-duplicating a `DISTRO_VERSION` default.
+The harness template should keep `distro.lock.yml` as the stable pointer to the
+distro under test, with scripts/workflows reading the lock unless a validation
+run deliberately overrides `DISTRO_REF`.
 
 ## Madagascar Payload
 

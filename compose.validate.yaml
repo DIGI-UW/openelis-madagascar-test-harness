@@ -2,13 +2,13 @@
 # Published images only; no upstream source checkout required at runtime.
 #
 # Bring up stack + mock:
-#   docker compose -f compose.yaml -f compose.validate.yaml up -d
+#   docker compose -f "$DISTRO_COMPOSE" -f compose.validate.yaml up -d
 #
 # Run demo tests (10 Madagascar flows):
-#   docker compose -f compose.yaml -f compose.validate.yaml run --rm demo-tests
+#   docker compose -f "$DISTRO_COMPOSE" -f compose.validate.yaml run --rm demo-tests
 #
 # Readiness:
-#   docker compose -f compose.yaml -f compose.validate.yaml ps
+#   docker compose -f "$DISTRO_COMPOSE" -f compose.validate.yaml ps
 #   curl -k -sSf https://localhost:8442/actuator/health
 #   curl -sSf http://localhost:8085/health
 
@@ -88,7 +88,7 @@ services:
     build:
       # ${HARNESS_DEMO_CONTEXT} should be set to an absolute path when this
       # compose file is layered with another file outside the harness repo
-      # (e.g., distro/compose.yaml as the first -f arg, which makes compose
+      # (e.g., the distro compose as the first -f arg, which makes compose
       # treat distro/ as the project directory and resolve `tests/playwright`
       # relative to *that*). CI sets HARNESS_DEMO_CONTEXT=${{ github.workspace }}/tests/playwright.
       context: ${HARNESS_DEMO_CONTEXT:-tests/playwright}
@@ -119,13 +119,13 @@ services:
       # (config: path.resolve(__dirname, "test-results/test-output")).
       # Mount there so video/trace/report land on the host. Path resolves
       # against compose's project-directory; when this overlay is layered
-      # under distro/compose.yaml the project-dir becomes distro/, so set
+      # under the distro compose the project-dir becomes distro/, so set
       # HARNESS_TEST_RESULTS_DIR to an absolute path in CI to land artifacts
       # where actions/upload-artifact looks for them.
       - ${HARNESS_TEST_RESULTS_DIR:-./test-results}:/app/test-results
       # Host filesystem for real analyzer file drops — read-only, matches
       # the same env-var-driven bind mount on webapp + bridge from Phase 1
-      # (compose.yaml). On UAT: ANALYZER_HOST_MOUNT=/mnt
+      # On UAT: ANALYZER_HOST_MOUNT=/mnt
       # (default). On dev: export ANALYZER_HOST_MOUNT=/home/you/OpenELIS-Global-2/docs/debug-local/mnt-snapshot
       # Playwright tests read from ${ANALYZER_HOST_MOUNT:-/mnt}/la2m/central/analyzers_results/...
       # for the drop-real-analyzer-file helper (plan mellow-honking-cascade §2.5c/§2.5d).

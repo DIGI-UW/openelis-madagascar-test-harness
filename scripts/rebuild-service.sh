@@ -33,10 +33,7 @@
 # Container names (used by `docker exec`) differ from service names (used by
 # `docker compose <verb> <service>`). This script accepts service names only.
 #
-# Distro resolution: same as restart-stack.sh.
-#   1. $DISTRO_REPO env var
-#   2. ../openelis-madagascar-distro sibling
-#   3. tarball download to .distro-cache/
+# Distro resolution: same as restart-stack.sh and distro.lock.yml.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -60,36 +57,12 @@ for arg in "$@"; do
   esac
 done
 
-# Resolve $DISTRO_REPO (sibling-or-download) — same logic as restart-stack.sh.
-DISTRO_REPO="${DISTRO_REPO:-}"
-if [[ -z "$DISTRO_REPO" ]]; then
-  SIBLING="$(realpath "$ROOT/../openelis-madagascar-distro" 2>/dev/null || echo "")"
-  if [[ -n "$SIBLING" && -d "$SIBLING" ]]; then
-    DISTRO_REPO="$SIBLING"
-  fi
-fi
-if [[ -z "$DISTRO_REPO" || ! -d "$DISTRO_REPO" ]]; then
-  DISTRO_VERSION="${DISTRO_VERSION:-3.2.1.7-pre-refactor}"
-  DISTRO_REPO="${ROOT}/.distro-cache/openelis-madagascar-distro-${DISTRO_VERSION}"
-  if [[ ! -d "$DISTRO_REPO" ]]; then
-    echo "[distro] no sibling clone — downloading ${DISTRO_VERSION} tarball..."
-    mkdir -p "${ROOT}/.distro-cache"
-    curl -sSfL "https://github.com/DIGI-UW/openelis-madagascar-distro/archive/refs/tags/${DISTRO_VERSION}.tar.gz" \
-      | tar xz -C "${ROOT}/.distro-cache"
-  fi
-fi
+source "${ROOT}/scripts/resolve-distro.sh"
+resolve_distro_from_lock "$ROOT"
 
 OE_REPO="${OE_REPO:-$(realpath "$ROOT/../OpenELIS-Global-2" 2>/dev/null || echo "")}"
 BRIDGE_REPO="${BRIDGE_REPO:-$(realpath "$ROOT/../openelis-analyzer-bridge" 2>/dev/null || echo "")}"
 
-# Prefer the local override compose.yaml when present (mgtest dev pattern
-# with :local pins); fall back to the canonical docker-compose.yml from
-# distro. Saved memory: distro compose.yaml is local-only.
-if [[ -f "${DISTRO_REPO}/compose.yaml" ]]; then
-  DISTRO_COMPOSE="${DISTRO_REPO}/compose.yaml"
-else
-  DISTRO_COMPOSE="${DISTRO_REPO}/docker-compose.yml"
-fi
 COMPOSE_FILES=(
   -f "${DISTRO_COMPOSE}"
   -f compose.dev.yaml

@@ -9,15 +9,15 @@
 #   ./scripts/restart-stack.sh --clean --seed-harness  # also run the analyzer harness seed
 #
 # Compose layering:
-#   ${DISTRO_REPO}/compose.yaml  — base stack (registry images only, from distro)
+#   ${DISTRO_COMPOSE}            — base stack (registry images only, from distro)
 #   compose.dev.yaml             — build: overlays for webapp/frontend/bridge
 #   compose.validate.yaml        — analyzer-mock service + Playwright runner
 #
 # Distro resolution:
 #   1. If $DISTRO_REPO is set and points at a directory, use it.
-#   2. Else if ../openelis-madagascar-distro exists, use it (sibling-clone mode).
-#   3. Else download the tagged tarball into .distro-cache/ (single-clone mode);
-#      $DISTRO_VERSION (default 3.2.1.7-pre-refactor) controls which tag.
+#   2. Else if ./distro exists, use it.
+#   3. Else if ../openelis-madagascar-distro exists, use it.
+#   4. Else download the ref from distro.lock.yml into .distro-cache/.
 #
 # Locally-buildable services pin to `:local` with native `build:` directives
 # in compose.dev.yaml:
@@ -56,35 +56,9 @@ cd "$ROOT"
 
 PROJECT_LABEL="com.docker.compose.project=openelis-madagascar-test-harness"
 
-# Resolve $DISTRO_REPO (sibling-or-download).
-DISTRO_REPO="${DISTRO_REPO:-}"
-if [[ -z "$DISTRO_REPO" ]]; then
-  SIBLING="$(realpath "$ROOT/../openelis-madagascar-distro" 2>/dev/null || echo "")"
-  if [[ -n "$SIBLING" && -d "$SIBLING" ]]; then
-    DISTRO_REPO="$SIBLING"
-  fi
-fi
-if [[ -z "$DISTRO_REPO" || ! -d "$DISTRO_REPO" ]]; then
-  DISTRO_VERSION="${DISTRO_VERSION:-3.2.1.7-pre-refactor}"
-  DISTRO_REPO="${ROOT}/.distro-cache/openelis-madagascar-distro-${DISTRO_VERSION}"
-  if [[ ! -d "$DISTRO_REPO" ]]; then
-    echo "[distro] no sibling clone — downloading ${DISTRO_VERSION} tarball..."
-    mkdir -p "${ROOT}/.distro-cache"
-    curl -sSfL "https://github.com/DIGI-UW/openelis-madagascar-distro/archive/refs/tags/${DISTRO_VERSION}.tar.gz" \
-      | tar xz -C "${ROOT}/.distro-cache"
-  fi
-fi
+source "${ROOT}/scripts/resolve-distro.sh"
+resolve_distro_from_lock "$ROOT"
 echo "[distro] using $DISTRO_REPO"
-
-# Distro's canonical compose is docker-compose.yml. Local mgtest devs
-# maintain a sibling compose.yaml with :local pins for fast rebuild — that
-# file is gitignored (saved memory: distro compose.yaml is local-only).
-# Prefer the local override when present; fall back to the canonical file.
-if [[ -f "${DISTRO_REPO}/compose.yaml" ]]; then
-  DISTRO_COMPOSE="${DISTRO_REPO}/compose.yaml"
-else
-  DISTRO_COMPOSE="${DISTRO_REPO}/docker-compose.yml"
-fi
 echo "[distro] compose file: $DISTRO_COMPOSE"
 
 COMPOSE="docker compose \
@@ -96,7 +70,7 @@ COMPOSE="docker compose \
 # deployment has been configured for it. Without this, deployments that rely
 # on LE certs (mgtest et al.) end up with a proxy container that can't find
 # /etc/letsencrypt/live/<cert>/fullchain.pem after a stack restart, since the
-# base compose.yaml doesn't mount the LE volume.
+# base distro compose doesn't mount the LE volume.
 LE_OVERLAY="${DISTRO_REPO}/compose.letsencrypt.yaml"
 LE_ENV_FILE="${DISTRO_REPO}/.env.letsencrypt"
 if [[ -f "$LE_OVERLAY" && -f "$LE_ENV_FILE" ]]; then
@@ -136,7 +110,7 @@ if [[ -n "$REBUILD_FLAG" ]]; then
   docker build -t madagascar-demo-tests:local \
     -f "$ROOT/tests/playwright/Dockerfile" "$ROOT/tests/playwright" 2>&1 \
     | tee "$BUILD_LOG_DIR/demo-tests.log" | tail -1
-  echo "  All images built. compose.yaml pins :local for webapp/frontend."
+  echo "  All images built. compose.dev.yaml pins local build contexts."
 fi
 
 echo "[1/6] Stopping stack (compose down -t 5 --remove-orphans, 60s cap)..."

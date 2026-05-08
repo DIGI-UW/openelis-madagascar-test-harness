@@ -5,13 +5,17 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-docker compose -f compose.yaml config -q
-docker compose -f compose.yaml -f compose.validate.yaml config -q
-docker compose -f compose.yaml -f compose.letsencrypt.yaml config -q
+source "${ROOT}/scripts/resolve-distro.sh"
+resolve_distro_from_lock "$ROOT"
+
+docker compose -f "$DISTRO_COMPOSE" config -q
+docker compose -f "$DISTRO_COMPOSE" -f compose.validate.yaml config -q
+if [[ -f "${DISTRO_REPO}/compose.letsencrypt.yaml" ]]; then
+  docker compose -f "$DISTRO_COMPOSE" -f "${DISTRO_REPO}/compose.letsencrypt.yaml" config -q
+fi
 docker compose \
-  -f compose.yaml \
+  -f "$DISTRO_COMPOSE" \
   -f compose.validate.yaml \
-  -f compose.letsencrypt.yaml \
   config -q
 
-echo "OK: compose files are valid (base + validate + letsencrypt, in every combination)."
+echo "OK: compose files are valid for ${DISTRO_COMPOSE} plus harness overlays."

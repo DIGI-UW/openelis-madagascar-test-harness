@@ -1,11 +1,11 @@
 # Dev/build overlay for the harness.
-# Layers ON TOP of distro/compose.yaml to add `build:` directives for
-# locally-buildable services. Distro's compose.yaml itself only references
+# Layers ON TOP of the locked distro compose file to add `build:` directives for
+# locally-buildable services. The distro compose itself only references
 # registry images (`:develop`), so consumers like Ozone never see these
 # build paths.
 #
 # Usage:
-#   docker compose -f distro/compose.yaml -f compose.dev.yaml \
+#   docker compose -f "$DISTRO_COMPOSE" -f compose.dev.yaml \
 #     [-f compose.validate.yaml] up -d
 #
 # Required env / sibling repos (defaults assume sibling-of-harness layout):

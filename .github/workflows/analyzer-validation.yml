@@ -7,7 +7,7 @@ on:
       distro_ref:
         description: "Distro ref to validate against (branch, tag, or SHA)"
         required: false
-        default: "main"
+        default: ""
       oe_ref:
         description: "OE2 ref to checkout for seed scripts (branch, tag, or SHA)"
         required: false
@@ -40,11 +40,21 @@ jobs:
       - name: Checkout harness
         uses: actions/checkout@v4
 
+      - name: Resolve distro ref
+        id: distro_ref
+        run: |
+          set -euo pipefail
+          ref="${{ inputs.distro_ref || '' }}"
+          if [ -z "$ref" ]; then
+            ref="$(sed -nE 's/^[[:space:]]*ref:[[:space:]]*["'\'']?([^"'\''#]+)["'\'']?[[:space:]]*(#.*)?$/\1/p' distro.lock.yml | head -n1 | sed -E 's/[[:space:]]+$//')"
+          fi
+          echo "value=$ref" >> "$GITHUB_OUTPUT"
+
       - name: Checkout distro
         uses: actions/checkout@v4
         with:
           repository: DIGI-UW/openelis-madagascar-distro
-          ref: ${{ inputs.distro_ref || 'main' }}
+          ref: ${{ steps.distro_ref.outputs.value }}
           path: distro
 
       - name: Checkout OE2 (build context for webapp/frontend/db/fhir/proxy/mock + seed-analyzers.sh)

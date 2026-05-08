@@ -9,18 +9,18 @@ This repository now includes a self-contained, docker-based validation path:
 
 The default stack uses floating tags (`itechuw/openelis-global-2:develop`, `itechuw/openelis-analyzer-bridge:develop`, etc.). After wiring fixes:
 
-1. **OE → bridge registration** — In webapp logs, expect `Bridge registration complete: N bindings pushed` with **N > 0** when analyzers exist and `ANALYZER_BRIDGE_URL` points at the bridge HTTPS URL (see `compose.yaml`).
+1. **OE → bridge registration** — In webapp logs, expect `Bridge registration complete: N bindings pushed` with **N > 0** when analyzers exist and `ANALYZER_BRIDGE_URL` points at the bridge HTTPS URL (see the locked distro compose file).
 2. **`discovered-sources` 404** — If the bridge still logs `404` for `.../discovered-sources` after aligning `ORG_ITECH_AHB_FORWARD_HTTP_SERVER_URI` and `ANALYZER_BRIDGE_URL`, treat that as a **version skew** between the published `develop` webapp and bridge images (not a distro-only misconfiguration).
 
 ## Local image builds (no merge wait)
 
-`compose.yaml` selects images via `${OE_IMAGE_TAG:-develop}` (and `${BRIDGE_IMAGE_TAG:-develop}` for the bridge), so swapping to a local build is one env var:
+The locked distro compose file selects images via `${OE_IMAGE_TAG:-develop}` (and `${BRIDGE_IMAGE_TAG:-develop}` for the bridge), so swapping to a local build is one env var:
 
 ```bash
 ./scripts/restart-stack.sh --rebuild
 ```
 
-That builds webapp, frontend, and demo-tests as `:local`, exports `OE_IMAGE_TAG=local`, and restarts the stack via `compose.yaml + compose.validate.yaml + compose.letsencrypt.yaml`.
+That builds webapp, frontend, and demo-tests as `:local`, exports `OE_IMAGE_TAG=local`, and restarts the stack via the locked distro compose plus harness overlays.
 
 To build manually:
 
@@ -42,7 +42,7 @@ Bring up with base + validate, using local images:
 
 ```bash
 OE_IMAGE_TAG=local docker compose \
-  -f compose.yaml \
+  -f "$DISTRO_COMPOSE" \
   -f compose.validate.yaml \
   up -d --force-recreate
 ```
@@ -63,7 +63,7 @@ Notes:
 Bring up the stack with the image-based overlay:
 
 ```bash
-docker compose -f compose.yaml -f compose.validate.yaml up -d
+docker compose -f "$DISTRO_COMPOSE" -f compose.validate.yaml up -d
 ```
 
 The Playwright runner uses Compose **profile** `demo` so a normal `up -d` does not start the one-shot test container.
@@ -71,7 +71,7 @@ The Playwright runner uses Compose **profile** `demo` so a normal `up -d` does n
 Readiness checks:
 
 ```bash
-docker compose -f compose.yaml -f compose.validate.yaml ps
+docker compose -f "$DISTRO_COMPOSE" -f compose.validate.yaml ps
 curl -k -sSf https://localhost:8443/OpenELIS-Global/health
 curl -k -sSf -X POST 'https://localhost/api/OpenELIS-Global/ValidateLogin?apiCall=true' \
   -d 'loginName=admin&password=adminADMIN!'
@@ -87,7 +87,7 @@ For trusted TLS on `madagascar.openelis-global.org` via Let’s Encrypt (HTTP-01
 1. Bring up the stack so `openelisglobal-proxy` is running.
 2. Run `./scripts/generate-letsencrypt-certs.sh --dry-run` (uses production-safe validation only).
 3. Run `./scripts/generate-letsencrypt-certs.sh` for real issuance.
-4. `docker compose -f compose.yaml -f compose.letsencrypt.yaml up -d --force-recreate proxy`
+4. `docker compose -f "$DISTRO_COMPOSE" -f "$DISTRO_REPO/compose.letsencrypt.yaml" up -d --force-recreate proxy`
 5. Verify HTTPS and the same app routes (`/` → frontend, `/api/` → backend).
 
 The overlay adds **`itechuw/astm-mock-server:latest`** (published mock; same family as upstream `analyzer-mock-server`) and extra bridge ports/env for ASTM forward-to-mock and HL7/MLLP.
@@ -126,14 +126,14 @@ For the detailed runbook and cautions, see:
 2. Run the demo runner service:
 
 ```bash
-COMPOSE_PROFILES=demo docker compose -f compose.yaml -f compose.validate.yaml run --rm demo-tests
+COMPOSE_PROFILES=demo docker compose -f "$DISTRO_COMPOSE" -f compose.validate.yaml run --rm demo-tests
 ```
 
 Optional overrides:
 
 ```bash
 BASE_URL=https://proxy TEST_USER=admin TEST_PASS=adminADMIN! \
-COMPOSE_PROFILES=demo docker compose -f compose.yaml -f compose.validate.yaml run --rm demo-tests
+COMPOSE_PROFILES=demo docker compose -f "$DISTRO_COMPOSE" -f compose.validate.yaml run --rm demo-tests
 ```
 
 Artifacts:

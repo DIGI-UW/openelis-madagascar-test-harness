@@ -1,0 +1,5 @@
+repository: DIGI-UW/openelis-madagascar-distro
+ref: e567ce0b5efea34c2a3ef1153cc0c1f47161847f
+commit_sha: e567ce0b5efea34c2a3ef1153cc0c1f47161847f
+compose_file: docker-compose.yml
+tarball_url_template: https://github.com/{repository}/archive/{ref}.tar.gz

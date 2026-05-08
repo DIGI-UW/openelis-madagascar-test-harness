@@ -20,14 +20,14 @@ on:
     inputs:
       distro_ref:
         description: "Distro ref to validate (tag or commit SHA on main)"
-        required: true
-        default: "3.2.1.7-pre-refactor"
+        required: false
+        default: ""
   schedule:
     - cron: "0 4 * * *"  # 04:00 UTC nightly
 
 env:
   DISTRO_REPO: DIGI-UW/openelis-madagascar-distro
-  DISTRO_REF: ${{ inputs.distro_ref || '3.2.1.7-pre-refactor' }}
+  DISTRO_REF: ${{ inputs.distro_ref || '' }}
 
 jobs:
   e2e:
@@ -40,8 +40,12 @@ jobs:
       - name: Download distro candidate
         run: |
           set -euo pipefail
+          if [ -z "${DISTRO_REF}" ]; then
+            DISTRO_REF="$(sed -nE 's/^[[:space:]]*ref:[[:space:]]*["'\'']?([^"'\''#]+)["'\'']?[[:space:]]*(#.*)?$/\1/p' distro.lock.yml | head -n1 | sed -E 's/[[:space:]]+$//')"
+            echo "DISTRO_REF=${DISTRO_REF}" >> "$GITHUB_ENV"
+          fi
           mkdir -p distro
-          curl -sSfL "https://github.com/${DISTRO_REPO}/archive/refs/tags/${DISTRO_REF}.tar.gz" \
+          curl -sSfL "https://github.com/${DISTRO_REPO}/archive/${DISTRO_REF}.tar.gz" \
             | tar xz -C distro --strip-components=1
           ls -la distro/
 

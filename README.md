@@ -34,12 +34,13 @@ For template extraction source classification, see
 [`docs/template-source-inventory.md`](docs/template-source-inventory.md).
 
 The harness has **no submodule** for the distro. At runtime,
-`scripts/restart-stack.sh` resolves where the distro lives:
+`scripts/restart-stack.sh` resolves where the distro lives using
+`distro.lock.yml`:
 
 1. `$DISTRO_REPO` env var (if set and points at a directory)
-2. `../openelis-madagascar-distro` (sibling clone, recommended for dev)
-3. Fallback: download `$DISTRO_VERSION` (default `3.2.1.7-pre-refactor`)
-   tarball into `.distro-cache/`
+2. `./distro` checkout
+3. `../openelis-madagascar-distro` sibling clone (recommended for dev)
+4. Fallback: download the locked `ref` into `.distro-cache/`
 
 ## Quickstart — sibling clone (recommended for active dev)
 
@@ -61,10 +62,12 @@ cd openelis-madagascar-test-harness
 ```bash
 git clone https://github.com/DIGI-UW/openelis-madagascar-test-harness
 cd openelis-madagascar-test-harness
-DISTRO_VERSION=3.2.1.7-pre-refactor ./scripts/restart-stack.sh --rebuild
+./scripts/restart-stack.sh --rebuild
 ```
 
-The script downloads the pinned distro tarball on first run.
+The script downloads the `distro.lock.yml` ref on first run. Override with
+`DISTRO_REF=<branch-tag-or-sha>` only when deliberately validating a different
+distro candidate.
 
 See [docs/README.md](docs/README.md) for flag-by-flag usage of
 `restart-stack.sh` and CI workflow details.
