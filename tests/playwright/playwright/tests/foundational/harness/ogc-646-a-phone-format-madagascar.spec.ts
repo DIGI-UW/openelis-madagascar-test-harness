@@ -1,18 +1,20 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * OGC-671 regression — PhoneNumberValidationProvider accepts the Madagascar
- * 37/38 formats with spaces, dashes, or no separators.
+ * OGC-671 regression — PhoneNumberValidationProvider accepts the configured
+ * Madagascar 37/38 formats, local operator shortcuts, and international visitor
+ * numbers with spaces, dashes, or no separators.
  *
  * This supersedes the earlier OGC-646 `+261-33-...` expectation. OGC-671
  * narrows Madagascar patient registration to `+261 37 XX XXX XX` and
- * `+261 38 XX XXX XX`.
+ * `+261 38 XX XXX XX` while still allowing non-Madagascar international
+ * numbers for visitors.
  */
 
 const VALIDATE_URL =
   "/api/OpenELIS-Global/rest/PhoneNumberValidationProvider";
 
-test.describe("OGC-671 PhoneNumberValidationProvider — Madagascar 37/38 format", () => {
+test.describe("OGC-671 PhoneNumberValidationProvider — Madagascar and international formats", () => {
   test("accepts +261 37 with spaces", async ({ request }) => {
     const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent("+261 37 12 345 67")}`;
     const resp = await request.get(url);
@@ -48,6 +50,32 @@ test.describe("OGC-671 PhoneNumberValidationProvider — Madagascar 37/38 format
     }
   });
 
+  test("accepts Madagascar local 37/38 shortcuts", async ({ request }) => {
+    for (const value of ["37 12 345 67", "381234567", "+37-12-345-67"]) {
+      const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent(value)}`;
+      const resp = await request.get(url);
+      expect(resp.status()).toBeLessThan(400);
+      const body = await resp.text();
+      console.log(`[OGC-671 local accept] ${value}: ${body.substring(0, 300)}`);
+      expect(JSON.parse(body).status, `${value} should be accepted`).toBe(true);
+    }
+  });
+
+  test("accepts non-Madagascar international visitor numbers", async ({
+    request,
+  }) => {
+    for (const value of ["+33 6 12 34 56 78", "+12025550123"]) {
+      const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent(value)}`;
+      const resp = await request.get(url);
+      expect(resp.status()).toBeLessThan(400);
+      const body = await resp.text();
+      console.log(
+        `[OGC-671 international accept] ${value}: ${body.substring(0, 300)}`,
+      );
+      expect(JSON.parse(body).status, `${value} should be accepted`).toBe(true);
+    }
+  });
+
   test("rejects legacy +261 33 numbers under OGC-671", async ({ request }) => {
     const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent("+261-33-456-76-98")}`;
     const resp = await request.get(url);
@@ -57,5 +85,20 @@ test.describe("OGC-671 PhoneNumberValidationProvider — Madagascar 37/38 format
     expect(JSON.parse(body).status, "legacy +261 33 must be rejected").toBe(
       false,
     );
+  });
+
+  test("rejects malformed international numbers", async ({ request }) => {
+    for (const value of ["+0123456789", "+1234567", "+1234567890123456"]) {
+      const url = `${VALIDATE_URL}?fieldId=patientPhone&value=${encodeURIComponent(value)}`;
+      const resp = await request.get(url);
+      expect(resp.status()).toBeLessThan(500);
+      const body = await resp.text();
+      console.log(
+        `[OGC-671 international reject] ${value}: ${body.substring(0, 300)}`,
+      );
+      expect(JSON.parse(body).status, `${value} should be rejected`).toBe(
+        false,
+      );
+    }
   });
 });

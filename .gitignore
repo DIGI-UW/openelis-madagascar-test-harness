@@ -6,8 +6,10 @@ test-results/
 test-artifacts/
 playwright-report/
 tests/playwright/node_modules/
+tests/playwright/playwright/.auth/
 
 # Editor/OS noise
+.cursor/
 .vscode/
 .idea/
 .DS_Store

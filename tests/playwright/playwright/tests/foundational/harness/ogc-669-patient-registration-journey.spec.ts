@@ -149,11 +149,11 @@ test.describe("OGC-669 patient registration UX journey", () => {
     await expect(page.locator("input#aka"), "Alias field should render").toBeVisible();
     await fillCarbonInput({ page, selector: "input#aka" }, ALIAS);
     await expect(page.locator('label[for="primaryPhone"]')).toContainText(
-      "+261 37 XX XXX XX",
+      "Primary phone:",
     );
-    await expect(page.locator('label[for="primaryPhone"]')).toContainText(
-      "+261 38 XX XXX XX",
-    );
+    await expect(
+      page.getByText("Local: 37 XX XXX XX | 38 XX XXX XX"),
+    ).toBeVisible();
     await fillCarbonInput(
       { page, selector: "input#primaryPhone" },
       PRIMARY_PHONE,
