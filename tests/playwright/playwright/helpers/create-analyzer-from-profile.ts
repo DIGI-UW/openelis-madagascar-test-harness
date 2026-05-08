@@ -23,7 +23,6 @@ import type { DemoPresentation } from "./demo-presentation";
 import type { AnalyzerTestConfig, CreatedAnalyzer } from "./analyzer-test-config";
 import { LONG_TIMEOUT } from "./timeouts";
 import { resolveDbContainer } from "./db-container";
-import { debugLog } from "./debug-instrumentation";
 
 const SIMULATOR_URL = process.env.SIMULATOR_URL || "http://localhost:8085";
 const ANALYZER_API_PATH = "/api/OpenELIS-Global/rest/analyzer/analyzers";
@@ -55,29 +54,6 @@ async function createMockNetwork(
     });
     const status = response.status();
     const textBody = await response.text().catch(() => "");
-    // #region agent log
-    fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0246c3",
-      },
-      body: JSON.stringify({
-        sessionId: "0246c3",
-        runId: "genexpert-connection-pre",
-        hypothesisId: "H6",
-        location: "helpers/create-analyzer-from-profile.ts:createMockNetwork-post",
-        message: "mock create response",
-        data: {
-          mockName,
-          status,
-          ok: response.ok(),
-          bodySnippet: textBody.slice(0, 300),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     if (response.ok()) {
       const body = JSON.parse(textBody) as { ip?: string };
       await response.dispose();
@@ -89,34 +65,6 @@ async function createMockNetwork(
       // Fetch existing
       const listResp = await page.request.get(`${SIMULATOR_URL}/analyzers`);
       const list = listResp.ok() ? await listResp.json() : null;
-      // #region agent log
-      fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "0246c3",
-        },
-        body: JSON.stringify({
-          sessionId: "0246c3",
-          runId: "genexpert-connection-pre",
-          hypothesisId: "H7",
-          location:
-            "helpers/create-analyzer-from-profile.ts:createMockNetwork-list",
-          message: "mock list fallback response",
-          data: {
-            mockName,
-            listOk: listResp.ok(),
-            analyzerCount: Array.isArray(list?.analyzers)
-              ? list.analyzers.length
-              : -1,
-            analyzerShape: Array.isArray(list?.analyzers)
-              ? Object.keys(list.analyzers[0] || {})
-              : [],
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       await listResp.dispose();
       if (list) {
         const existing = list.analyzers?.find(
@@ -126,85 +74,16 @@ async function createMockNetwork(
       }
     }
     return null;
-  } catch (error) {
-    // #region agent log
-    fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0246c3",
-      },
-      body: JSON.stringify({
-        sessionId: "0246c3",
-        runId: "genexpert-connection-pre",
-        hypothesisId: "H8",
-        location:
-          "helpers/create-analyzer-from-profile.ts:createMockNetwork-catch",
-        message: "mock create threw",
-        data: {
-          mockName,
-          error: error instanceof Error ? error.message.slice(0, 250) : "unknown",
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
+  } catch {
     try {
       const listResp = await page.request.get(`${SIMULATOR_URL}/analyzers`);
       const list = listResp.ok() ? await listResp.json() : null;
-      // #region agent log
-      fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "0246c3",
-        },
-        body: JSON.stringify({
-          sessionId: "0246c3",
-          runId: "genexpert-connection-pre",
-          hypothesisId: "H10",
-          location:
-            "helpers/create-analyzer-from-profile.ts:createMockNetwork-recover",
-          message: "mock create recovery list response",
-          data: {
-            mockName,
-            listOk: listResp.ok(),
-            analyzerCount: Array.isArray(list?.analyzers)
-              ? list.analyzers.length
-              : -1,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       await listResp.dispose();
       if (Array.isArray(list?.analyzers)) {
         const existing = list.analyzers.find(
           (a: { name?: string; ip?: string }) => a?.name === mockName,
         );
         if (existing?.ip) {
-          // #region agent log
-          fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "0246c3",
-            },
-            body: JSON.stringify({
-              sessionId: "0246c3",
-              runId: "genexpert-connection-pre",
-              hypothesisId: "H11",
-              location:
-                "helpers/create-analyzer-from-profile.ts:createMockNetwork-recover",
-              message: "recovered mock ip after create failure",
-              data: {
-                mockName,
-                recoveredIp: existing.ip,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion
           return existing.ip;
         }
       }
@@ -363,30 +242,6 @@ export async function createAnalyzerFromProfile(
       template,
       port,
     );
-    // #region agent log
-    fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0246c3",
-      },
-      body: JSON.stringify({
-        sessionId: "0246c3",
-        runId: "genexpert-connection-pre",
-        hypothesisId: "H5",
-        location: "helpers/create-analyzer-from-profile.ts:mock-network",
-        message: "mock network assigned",
-        data: {
-          analyzerName: config.name,
-          mockAnalyzerName: config.mockAnalyzerName,
-          assignedIp,
-          port,
-          protocol: config.protocol,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
 
     // Creating/attaching docker networks can briefly destabilize connectivity.
     await waitForAnalyzerApiReady(page);
@@ -439,29 +294,6 @@ export async function createAnalyzerFromProfile(
     const harnessIp = assignedIp || null;
     const harnessPort = config.port;
     if (!harnessIp || !harnessPort) {
-      // #region agent log
-      fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "0246c3",
-        },
-        body: JSON.stringify({
-          sessionId: "0246c3",
-          runId: "genexpert-connection-pre",
-          hypothesisId: "H9",
-          location: "helpers/create-analyzer-from-profile.ts:tcp-required-values",
-          message: "missing required harness TCP values",
-          data: {
-            analyzerName: config.name,
-            protocol: config.protocol,
-            harnessIp,
-            harnessPort: harnessPort ?? null,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
       throw new Error(
         `Harness TCP values are required for ${config.name}: ip=${harnessIp ?? "missing"}, port=${harnessPort ?? "missing"}`,
       );

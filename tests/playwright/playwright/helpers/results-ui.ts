@@ -1,8 +1,5 @@
 import { expect, Locator, Page, type TestInfo } from "@playwright/test";
-import {
-  attachScreenshot,
-  debugLog,
-} from "./debug-instrumentation";
+import { attachScreenshot } from "./report-artifacts";
 import { LONG_TIMEOUT, SHORT_TIMEOUT, UI_TIMEOUT } from "./timeouts";
 
 /**
@@ -117,67 +114,6 @@ export async function captureAccessionPageFailureArtifacts(
       screenshot,
     );
   }
-  const bodyText = ((await page.locator("body").textContent()) || "").replace(
-    /\s+/g,
-    " ",
-  );
-  const alphanum = convertAlphaNumLabNumForDisplay(expectedLabel);
-  const title = await page.title().catch(() => "");
-  const h1 = await page.locator("h1").first().textContent().catch(() => "");
-  const accessionInputValue = await page
-    .locator('input[name="accessionNumber"], #searchAccessionID')
-    .first()
-    .inputValue()
-    .catch(() => "");
-  const sampleInfoPreview = await page
-    .locator('[data-testid="LabNo"], .sampleInfo')
-    .allTextContents()
-    .then((items) =>
-      items
-        .map((t) => t.replace(/\s+/g, " ").trim())
-        .filter(Boolean)
-        .slice(0, 6),
-    )
-    .catch(() => []);
-  let locatorMatchCount = 0;
-  try {
-    locatorMatchCount = await page
-      .getByText(accessionTextRegExp(expectedLabel))
-      .count();
-  } catch {
-    locatorMatchCount = -1;
-  }
-  const noResultsBanner = await page
-    .getByText(/no sample found|no tests with pending/i)
-    .first()
-    .isVisible()
-    .catch(() => false);
-
-  debugLog({
-    phase: "accession-verify",
-    hypothesisId,
-    location,
-    message: reason,
-    runId: "accession-verify",
-    data: {
-      url: page.url(),
-      expectedAccession: expectedLabel,
-      expectedDisplayVariants: Array.from(
-        new Set([expectedLabel.trim(), alphanum].filter(Boolean)),
-      ),
-      bodyHasRawAccession: bodyText.includes(expectedLabel.trim()),
-      bodyHasAlphanumVariant: bodyText.includes(alphanum),
-      locatorMatchCount,
-      pageTitle: title,
-      h1First: (h1 || "").trim().slice(0, 240),
-      accessionSearchInputValue: accessionInputValue,
-      noResultsBannerVisible: noResultsBanner,
-      sampleInfoPreview,
-      screenshotBytes: screenshot ? screenshot.length : 0,
-      screenshotAttachedToReport: Boolean(screenshot && testInfo),
-      bodySnippet: bodyText.slice(0, 600),
-    },
-  });
 }
 
 async function navigateUntilVisible(
@@ -221,30 +157,6 @@ async function navigateUntilVisible(
               } finally {
                 await resp.dispose();
               }
-              if (pollAttempt <= 3) {
-                // #region agent log
-                debugLog({
-                  phase: "results-poll",
-                  hypothesisId: "R1",
-                  location: "helpers/results-ui.ts:api-poll",
-                  message: "AnalyzerResults REST poll sample (first 3 attempts)",
-                  runId: "results-poll",
-                  data: {
-                    attempt: pollAttempt,
-                    apiPollUrl: options.apiPollUrl,
-                    ok,
-                    keys:
-                      data && typeof data === "object"
-                        ? Object.keys(data as Record<string, unknown>)
-                        : [],
-                    resultListLength: Array.isArray(data?.resultList)
-                      ? data.resultList.length
-                      : -1,
-                    bodySnippet: text.slice(0, 220),
-                  },
-                });
-                // #endregion
-              }
               if (
                 data &&
                 !Array.isArray(data?.resultList) &&
@@ -280,21 +192,7 @@ async function navigateUntilVisible(
       }
     }
 
-    if (shouldFallbackToUiReload) {
-      // #region agent log
-      debugLog({
-        phase: "results-poll",
-        hypothesisId: "R2",
-        location: "helpers/results-ui.ts:api-poll-fallback",
-        message: "API returned form metadata — falling back to UI reload loop",
-        runId: "results-poll",
-        data: {
-          apiPollUrl: options.apiPollUrl,
-          attempts: pollAttempt,
-        },
-      });
-      // #endregion
-    } else {
+    if (!shouldFallbackToUiReload) {
       await page.goto(url, {
         waitUntil: "domcontentloaded",
         timeout: perAttemptTimeoutMs,
@@ -457,7 +355,6 @@ export async function openAccessionResultsAndWaitForText(
       timeout: visibilityTimeout,
     });
   } catch (error) {
-    // #region agent log
     await captureAccessionPageFailureArtifacts(
       page,
       options?.testInfo,
@@ -466,7 +363,6 @@ export async function openAccessionResultsAndWaitForText(
       "helpers/results-ui.ts:openAccessionResultsAndWaitForText",
       "Accession text not visible on AccessionResults page",
     );
-    // #endregion
     throw error;
   }
 }

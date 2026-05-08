@@ -1,6 +1,5 @@
 import { Page, expect, type TestInfo } from "@playwright/test";
 import type { DemoPresentation } from "./demo-presentation";
-import { debugLog } from "./debug-instrumentation";
 import {
   LONG_TIMEOUT,
   NAV_TIMEOUT,
@@ -29,15 +28,6 @@ export async function validateResults(
   testInfo?: TestInfo,
   configName?: string,
 ) {
-  debugLog({
-    phase: "validate-results",
-    hypothesisId: "D1",
-    location: "helpers/validate-results.ts:validateResults",
-    message: `Navigating to validation screen for ${accessionNumber}`,
-    runId: "validate-results",
-    data: { accessionNumber },
-  });
-
   await presentation.step(
     stepOffset + 1,
     `Loading Ready for Validation screen for ${accessionNumber}...`,
@@ -64,14 +54,6 @@ export async function validateResults(
   if (rowCount === 0) {
     // Not necessarily a failure — results may have been auto-finalized
     // or this accession may not need biological validation. Record it.
-    debugLog({
-      phase: "validate-results",
-      hypothesisId: "D1",
-      location: "helpers/validate-results.ts:validateResults",
-      message: `No rows on validation screen for ${accessionNumber} — may be already finalized`,
-      runId: "validate-results",
-      data: { accessionNumber },
-    });
     await presentation.step(
       stepOffset + 1,
       `No pending validation for ${accessionNumber} (already finalized or no biologist review required)`,

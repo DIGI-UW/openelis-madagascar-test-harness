@@ -30,6 +30,9 @@ against tagged distro candidates.
     └── e2e.yml                  # download tagged distro tarball, run Playwright
 ```
 
+For template extraction source classification, see
+[`docs/template-source-inventory.md`](docs/template-source-inventory.md).
+
 The harness has **no submodule** for the distro. At runtime,
 `scripts/restart-stack.sh` resolves where the distro lives:
 

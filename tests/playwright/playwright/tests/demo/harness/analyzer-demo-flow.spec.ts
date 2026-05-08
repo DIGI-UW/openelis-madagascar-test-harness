@@ -39,7 +39,6 @@ import type {
   PushResult,
 } from "../../../helpers/analyzer-test-config";
 import { buildRunScopedFileTargetDir } from "../../../helpers/file-target-dir";
-import { debugLog } from "../../../helpers/debug-instrumentation";
 
 const SIMULATOR_URL = process.env.SIMULATOR_URL || "http://localhost:8085";
 const RESULTS_TIMEOUT = 90_000;
@@ -461,27 +460,6 @@ test.describe("Madagascar analyzer demo flows", () => {
         testFailed = true;
         throw e;
       } finally {
-        debugLog({
-          phase: "teardown",
-          hypothesisId: "T1",
-          location:
-            "tests/demo/harness/analyzer-demo-flow.spec.ts:finally-before-teardown",
-          message: testFailed
-            ? "SKIPPING teardown — test failed. DB + bridge state preserved for diagnosis. Run `./scripts/restart-stack.sh --clean` before the next iteration."
-            : "Running teardown on success path",
-          runId: "harness-demo",
-          data: {
-            analyzerId: analyzerId ?? null,
-            testFailed,
-            urlBeforeTeardown: (() => {
-              try {
-                return page.url();
-              } catch {
-                return "(page unavailable)";
-              }
-            })(),
-          },
-        });
         if (!testFailed || process.env.PRESERVE_FAILURE_STATE === "0") {
           await teardownAnalyzer(page, runConfig, analyzerId);
         }

@@ -1,6 +1,5 @@
 import { Page, expect, type TestInfo } from "@playwright/test";
 import type { DemoPresentation } from "./demo-presentation";
-import { debugLog } from "./debug-instrumentation";
 import {
   accessionTextRegExp,
   openAccessionResultsAndWaitForText,
@@ -61,20 +60,6 @@ export async function acceptAndVerifyResults(
   }
 
   const primaryAccession = uniqueAccessions[0];
-
-  // #region agent log
-  debugLog({
-    phase: "accept-results",
-    hypothesisId: "A0",
-    location: "helpers/accept-results.ts:acceptAndVerifyResults",
-    message: `Accepting ${uniqueAccessions.length} accessions`,
-    runId: "accept-results",
-    data: {
-      accessions: uniqueAccessions,
-      explicitAccessionPassed: accessionNumber != null,
-    },
-  });
-  // #endregion
 
   // ── Accept rows ───────────────────────────────────────────────────
   await presentation.step(

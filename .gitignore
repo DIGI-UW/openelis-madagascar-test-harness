@@ -5,6 +5,7 @@
 test-results/
 test-artifacts/
 playwright-report/
+tests/playwright/.env
 tests/playwright/node_modules/
 tests/playwright/playwright/.auth/
 
