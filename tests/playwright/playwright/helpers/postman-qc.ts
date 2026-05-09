@@ -35,10 +35,19 @@ export type QcScenario = {
   title: string;
   subtitle: string;
   postmanPath: string[];
+  /** OE analyzer id (e.g. 11 = GeneXpert, 13 = Mindray BS-200, 14 = QuantStudio 5). */
+  analyzerId: number;
+  /** Substring used both for QC violation API filtering and dashboard row matching. */
   instrumentName: string;
+  /** Substring of OE-side test name as it appears on the dashboard row + violations API. */
   testName: string;
+  /** Optional explicit name to assert in the analyzer edit form (defaults to instrumentName). */
+  expectedFormName?: string;
   expectedRuleCode?: string;
   expectedSeverity?: string;
+  /** Bridge analyzer protocol — controls whether we expect the bridge admin reset
+   *  endpoint to clean up an incoming dir. */
+  protocol: "ASTM" | "HL7" | "FILE";
 };
 
 const COLLECTION_PATH = path.resolve(
@@ -215,4 +224,95 @@ export async function verifyQcDashboardUi(
   );
 
   await presentation.evidence(`qc-dashboard-${scenario.instrumentName}`);
+}
+
+/**
+ * Open the analyzer setup pages for the scenario's analyzer in the order a
+ * lab admin would walk a newcomer through configuration:
+ *   1. Analyzer dashboard (highlight the row)
+ *   2. Analyzer edit form (protocol + transport + status)
+ *   3. Analyzer QC rules page (classification rules pulled from profile)
+ *
+ * Each step takes a presentation evidence snapshot so the captured video
+ * carries the visual narrative. Helper isolates the boilerplate so the
+ * spec body stays focused on the QC scenario.
+ */
+export async function walkAnalyzerSetup(
+  page: Page,
+  scenario: QcScenario,
+  presentation: DemoPresentation,
+): Promise<void> {
+  await presentation.scene("Analyzer Setup");
+  await presentation.step(
+    1,
+    `Open the analyzer dashboard and locate ${scenario.instrumentName}`,
+    2_500,
+  );
+  await page.goto("/analyzers", { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("analyzers-list")).toBeVisible();
+  const row = page.getByTestId(`analyzer-row-${scenario.analyzerId}`);
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(scenario.instrumentName);
+  await presentation.evidence(`qc-setup-${scenario.instrumentName}-dashboard`);
+  await presentation.pause(1_500);
+
+  await presentation.step(
+    2,
+    `Open the ${scenario.protocol} analyzer's edit form to confirm protocol and transport`,
+    2_500,
+  );
+  await page.goto(`/analyzers/${scenario.analyzerId}/edit`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByTestId("analyzer-form")).toBeVisible();
+  const expectedFormName = scenario.expectedFormName || scenario.instrumentName;
+  await expect(page.getByTestId("analyzer-form-name-input")).toHaveValue(
+    new RegExp(expectedFormName, "i"),
+  );
+  await presentation.evidence(`qc-setup-${scenario.instrumentName}-edit`);
+  await presentation.pause(1_500);
+
+  await presentation.step(
+    3,
+    `Open the analyzer's QC rules so the bridge knows which samples are QC`,
+    2_500,
+  );
+  await page.goto(`/analyzers/${scenario.analyzerId}/qc-rules`, {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.locator("body")).toContainText(/qc.*rule/i);
+  await presentation.evidence(`qc-setup-${scenario.instrumentName}-qc-rules`);
+  await presentation.pause(1_500);
+}
+
+/**
+ * Reset the bridge-side state for the scenario's analyzer so a re-run does
+ * not race with stale RETRYING rows or leftover incoming files. Hits the
+ * bridge's /admin/reset endpoint via the host port (8442 in mgdev).
+ *
+ * Optional — call from the spec's beforeEach. Silent no-op when the bridge
+ * URL or creds aren't reachable so this can run against environments where
+ * the admin endpoint isn't exposed.
+ */
+export async function resetBridgeForAnalyzer(
+  page: Page,
+  analyzerId: number,
+): Promise<void> {
+  const bridgeUrl = process.env.BRIDGE_ADMIN_URL || "https://localhost:8442";
+  const auth =
+    "Basic " +
+    Buffer.from(
+      `${process.env.BRIDGE_USER || "bridge"}:${process.env.BRIDGE_PASS || "changeme"}`,
+    ).toString("base64");
+  try {
+    await page.request.post(
+      `${bridgeUrl}/admin/reset?analyzerId=${analyzerId}`,
+      {
+        headers: { Authorization: auth },
+        ignoreHTTPSErrors: true,
+      },
+    );
+  } catch {
+    // best-effort — admin endpoint missing on older bridge images
+  }
 }
