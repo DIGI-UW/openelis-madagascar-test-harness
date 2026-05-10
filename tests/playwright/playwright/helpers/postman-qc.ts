@@ -143,8 +143,14 @@ export async function executePostmanItem(
     headers: resolved.headers,
     data: resolved.body,
   });
-  const json = await resp.json().catch(() => ({}));
-  return { status: resp.status(), json };
+  try {
+    const json = await resp.json().catch(() => ({}));
+    return { status: resp.status(), json };
+  } finally {
+    // Free the response buffer; demo runs invoke this many times per
+    // scenario and Playwright keeps APIResponse bodies until disposed.
+    await resp.dispose();
+  }
 }
 
 export async function pollQcViolations(
@@ -157,11 +163,15 @@ export async function pollQcViolations(
     const response = await page.request.get(
       "/api/OpenELIS-Global/rest/qc/violations?unresolved=true",
     );
-    expect(response.status()).toBe(200);
-    const payload = await response.json().catch(() => []);
-    const list = extractResponseData(payload);
-    const hit = list.find(predicate);
-    if (hit) return hit;
+    try {
+      expect(response.status()).toBe(200);
+      const payload = await response.json().catch(() => []);
+      const list = extractResponseData(payload);
+      const hit = list.find(predicate);
+      if (hit) return hit;
+    } finally {
+      await response.dispose();
+    }
     await page.waitForTimeout(2_000);
   }
   throw new Error("Timed out waiting for matching QC violation");
@@ -177,13 +187,17 @@ export async function pollQcInstrument(
     const response = await page.request.get(
       "/api/OpenELIS-Global/rest/qc/dashboard/instruments",
     );
-    expect(response.status()).toBe(200);
-    const payload = await response.json().catch(() => []);
-    const instruments = extractResponseData(payload);
-    const hit = instruments.find((inst: any) =>
-      String(inst.instrumentName || "").toLowerCase().includes(instrumentName.toLowerCase()),
-    );
-    if (hit) return hit;
+    try {
+      expect(response.status()).toBe(200);
+      const payload = await response.json().catch(() => []);
+      const instruments = extractResponseData(payload);
+      const hit = instruments.find((inst: any) =>
+        String(inst.instrumentName || "").toLowerCase().includes(instrumentName.toLowerCase()),
+      );
+      if (hit) return hit;
+    } finally {
+      await response.dispose();
+    }
     await page.waitForTimeout(2_000);
   }
   throw new Error(`Timed out waiting for instrument '${instrumentName}'`);
@@ -305,13 +319,14 @@ export async function resetBridgeForAnalyzer(
       `${process.env.BRIDGE_USER || "bridge"}:${process.env.BRIDGE_PASS || "changeme"}`,
     ).toString("base64");
   try {
-    await page.request.post(
+    const response = await page.request.post(
       `${bridgeUrl}/admin/reset?analyzerId=${analyzerId}`,
       {
         headers: { Authorization: auth },
         ignoreHTTPSErrors: true,
       },
     );
+    await response.dispose();
   } catch {
     // best-effort — admin endpoint missing on older bridge images
   }
