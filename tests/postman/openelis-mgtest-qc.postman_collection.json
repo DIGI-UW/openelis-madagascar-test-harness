@@ -226,7 +226,7 @@
           "name": "GET QC control lots",
           "request": {
             "method": "GET",
-            "url": { "raw": "{{oe_url}}/api/OpenELIS-Global/rest/qc/control-lots", "host": ["{{oe_url}}"], "path": ["api", "OpenELIS-Global", "rest", "qc", "controlLot"] }
+            "url": { "raw": "{{oe_url}}/api/OpenELIS-Global/rest/qc/control-lots", "host": ["{{oe_url}}"], "path": ["api", "OpenELIS-Global", "rest", "qc", "control-lots"] }
           }
         },
         {
