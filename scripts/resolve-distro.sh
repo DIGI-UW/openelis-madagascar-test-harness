@@ -59,13 +59,27 @@ resolve_distro_from_lock() {
         mkdir -p "${root}/.distro-cache"
         tarball_url="${DISTRO_TARBALL_URL_TEMPLATE//\{repository\}/$DISTRO_REPOSITORY}"
         tarball_url="${tarball_url//\{ref\}/$DISTRO_REF}"
-        curl -sSfL "$tarball_url" | tar xz -C "${root}/.distro-cache"
-        local extracted
-        extracted="$(find "${root}/.distro-cache" -maxdepth 1 -type d -name "${repo_name}-*" | sort | tail -n1)"
-        if [[ "$extracted" != "$DISTRO_REPO" ]]; then
-          rm -rf "$DISTRO_REPO"
-          mv "$extracted" "$DISTRO_REPO"
+
+        # Extract into a per-call scratch dir so the destination move can't
+        # accidentally pick up an unrelated cached `${repo_name}-*` folder
+        # left from a previous ref. The tarball produces exactly one
+        # top-level directory; we move that under the deterministic cache
+        # key path and discard the scratch.
+        local scratch extracted
+        scratch="$(mktemp -d "${root}/.distro-cache/.scratch-XXXXXXXX")"
+        if ! curl -sSfL "$tarball_url" | tar xz -C "$scratch"; then
+          rm -rf "$scratch"
+          echo "ERROR: failed to download/extract distro tarball $tarball_url" >&2
+          return 1
         fi
+        extracted="$(find "$scratch" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+        if [[ -z "$extracted" ]]; then
+          rm -rf "$scratch"
+          echo "ERROR: distro tarball produced no top-level directory" >&2
+          return 1
+        fi
+        mv "$extracted" "$DISTRO_REPO"
+        rm -rf "$scratch"
       fi
     fi
   fi

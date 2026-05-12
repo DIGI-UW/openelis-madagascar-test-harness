@@ -18,6 +18,9 @@ on:
         default: "develop"
 
 env:
+  # Default fallback in case the "Resolve distro from lock" step doesn't run
+  # (e.g. on a config-validation only path). The resolver overrides this via
+  # $GITHUB_ENV so the compose_file from distro.lock.yml takes effect.
   COMPOSE_FILES: -f distro/docker-compose.yml -f compose.dev.yaml -f compose.validate.yaml
 
 jobs:
@@ -40,21 +43,40 @@ jobs:
       - name: Checkout harness
         uses: actions/checkout@v4
 
-      - name: Resolve distro ref
-        id: distro_ref
+      - name: Resolve distro from lock
+        id: distro
         run: |
           set -euo pipefail
+          # Use the same lock fields the local resolver consumes
+          # (scripts/resolve-distro.sh) so CI validates exactly what
+          # distro.lock.yml describes — repository, ref, and compose file.
+          # Any field can be overridden by workflow inputs.
+          parse() {
+            sed -nE "s|^[[:space:]]*$1:[[:space:]]*['\"]?([^'\"#]+)['\"]?[[:space:]]*(#.*)?\$|\\1|p" distro.lock.yml \
+              | head -n1 | sed -E 's/[[:space:]]+$//'
+          }
+          repository="$(parse repository)"
           ref="${{ inputs.distro_ref || '' }}"
-          if [ -z "$ref" ]; then
-            ref="$(sed -nE 's/^[[:space:]]*ref:[[:space:]]*["'\'']?([^"'\''#]+)["'\'']?[[:space:]]*(#.*)?$/\1/p' distro.lock.yml | head -n1 | sed -E 's/[[:space:]]+$//')"
+          if [ -z "$ref" ]; then ref="$(parse ref)"; fi
+          compose_file="$(parse compose_file)"
+          [ -z "$compose_file" ] && compose_file="docker-compose.yml"
+          if [ -z "$repository" ] || [ -z "$ref" ]; then
+            echo "ERROR: distro.lock.yml must define repository and ref" >&2
+            exit 1
           fi
-          echo "value=$ref" >> "$GITHUB_OUTPUT"
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "ref=$ref"               >> "$GITHUB_OUTPUT"
+          echo "compose_file=$compose_file" >> "$GITHUB_OUTPUT"
+          # Export the resolved -f flag-string for downstream `docker compose`
+          # steps so they all use the lock-declared compose file rather than
+          # the hardcoded default.
+          echo "COMPOSE_FILES=-f distro/${compose_file} -f compose.dev.yaml -f compose.validate.yaml" >> "$GITHUB_ENV"
 
       - name: Checkout distro
         uses: actions/checkout@v4
         with:
-          repository: DIGI-UW/openelis-madagascar-distro
-          ref: ${{ steps.distro_ref.outputs.value }}
+          repository: ${{ steps.distro.outputs.repository }}
+          ref: ${{ steps.distro.outputs.ref }}
           path: distro
 
       - name: Checkout OE2 (build context for webapp/frontend/db/fhir/proxy/mock + seed-analyzers.sh)

@@ -5,6 +5,27 @@ This repository now includes a self-contained, docker-based validation path:
 - published mock image
 - distro-local Playwright demo tests (`tests/playwright`)
 
+## Resolving the distro checkout (`$DISTRO_REPO`, `$DISTRO_COMPOSE`)
+
+The commands below reference `$DISTRO_REPO` (the distro checkout directory)
+and `$DISTRO_COMPOSE` (the distro's main compose file). Both are populated
+by the shared resolver script — source it once per shell before running the
+manual `docker compose` commands in this doc:
+
+```bash
+cd /path/to/openelis-madagascar-test-harness
+source scripts/resolve-distro.sh
+resolve_distro_from_lock "$PWD"
+echo "DISTRO_REPO=$DISTRO_REPO"
+echo "DISTRO_COMPOSE=$DISTRO_COMPOSE"
+```
+
+The resolver follows `distro.lock.yml` — local checkout (`./distro` or
+sibling `../openelis-madagascar-distro`) wins, otherwise the locked ref is
+downloaded into `.distro-cache/`. `scripts/restart-stack.sh`,
+`scripts/rebuild-service.sh`, and `scripts/validate-compose.sh` source it
+automatically; only the raw `docker compose` snippets below need it.
+
 ## Published `develop` images
 
 The default stack uses floating tags (`itechuw/openelis-global-2:develop`, `itechuw/openelis-analyzer-bridge:develop`, etc.). After wiring fixes:
