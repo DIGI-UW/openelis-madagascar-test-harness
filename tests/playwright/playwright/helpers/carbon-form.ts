@@ -94,6 +94,23 @@ export async function clickCarbonRadio(
 }
 
 /**
+ * Carbon Toggle: click via the label wrapper, with `force: true` because
+ * Carbon's appearance div sits above the input and intercepts normal pointer
+ * events. Matches the shape of `clickCarbonRadio` — pass the toggle's id.
+ */
+export async function clickCarbonToggle(
+  page: Page,
+  inputId: string,
+  options: { timeout?: number } = {},
+): Promise<void> {
+  const label = page.locator(`#${inputId}_label, label[for="${inputId}"]`);
+  await expect(label.first()).toBeVisible({
+    timeout: options.timeout ?? UI_TIMEOUT,
+  });
+  await label.first().click({ force: true });
+}
+
+/**
  * Carbon CustomDatePicker (flatpickr-wrapped). Carbon convention is
  * id="date-picker-default-id"; pass a `scope` locator if multiple date
  * pickers share the page (otherwise .first() picks the visible one).
