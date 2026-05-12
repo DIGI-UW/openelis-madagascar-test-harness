@@ -152,8 +152,9 @@ test.describe("OGC-669 patient registration UX journey", () => {
       "Primary phone:",
     );
     await expect(
-      page.getByText("Local: 37 XX XXX XX | 38 XX XXX XX"),
-    ).toBeVisible();
+      page.locator("#primaryPhone-helper-text"),
+      "Primary phone Carbon helper text should display the Madagascar 37/38 format",
+    ).toContainText("Local: 37 XX XXX XX | 38 XX XXX XX");
     await fillCarbonInput(
       { page, selector: "input#primaryPhone" },
       PRIMARY_PHONE,
