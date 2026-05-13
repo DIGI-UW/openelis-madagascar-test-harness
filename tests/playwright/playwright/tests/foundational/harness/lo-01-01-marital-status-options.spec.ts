@@ -14,10 +14,11 @@ import { expect, test } from "@playwright/test";
  * or a new placeholder/dev value was added.
  */
 
-const EXPECTED_VALUES = ["married", "single", "divorced", "widowed", "livingWith"];
+const EXPECTED_VALUES = ["married", "single", "divorced", "widowed"];
+const FORBIDDEN_PATTERN = /^(dna|livingWith)$/i;
 
 test.describe("LO-01-01: PATIENT_MARITAL_STATUS dropdown contents", () => {
-  test("API returns no DNA option", async ({ page }) => {
+  test("API returns no DNA or livingWith option", async ({ page }) => {
     const response = await page.request.get(
       "/api/OpenELIS-Global/rest/displayList/PATIENT_MARITAL_STATUS",
     );
@@ -29,11 +30,11 @@ test.describe("LO-01-01: PATIENT_MARITAL_STATUS dropdown contents", () => {
 
     const offending = body.filter(
       (entry: { value?: string; display?: string }) =>
-        /dna/i.test(entry.value || "") || /dna/i.test(entry.display || ""),
+        FORBIDDEN_PATTERN.test(entry.value || "") || FORBIDDEN_PATTERN.test(entry.display || ""),
     );
     expect(
       offending,
-      `Found DNA-like entries in marital status dropdown: ${JSON.stringify(offending)}`,
+      `Found DNA or livingWith entries in marital status dropdown: ${JSON.stringify(offending)}`,
     ).toEqual([]);
   });
 
