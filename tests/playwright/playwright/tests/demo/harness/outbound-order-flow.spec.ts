@@ -1,19 +1,16 @@
 /**
- * Outbound Order Dispatch Demo Flow
+ * Outbound Order Dispatch — round-trip demo flow
  *
- * Exercises the LIS-initiated order path:
- *   OE2 (ModifyOrder → Send to analyzer button)
+ *   OE2 ModifyOrder ─ Send to analyzer button
  *     → bridge (HTTPListenController for ASTM, /api/send-hl7 for HL7)
- *     → mock analyzer (genexpert_astm on port 9600 / mindray_bc5380 on 5380)
- *     → mock pushes back a matching result on the same / fresh connection
- *     → bridge inbound listener (ASTM 12001 / MLLP 2575)
- *     → OE2 inbound result import (keyed by accession echoed in O.3 / OBR-3)
+ *     → mock analyzer (genexpert_astm:9600 / mindray_bc5380:5380)
+ *     → mock pushes a matching result via FRESH connection back to the
+ *       bridge's inbound listener (ASTM:12001 / MLLP:2575)
+ *     → OE2 inbound result import keys to accession via O.3 / OBR-3
+ *     → result row appears on AnalyzerResults → accept → AccessionResults
  *
- * For this proof spec, the click portion runs end-to-end (visual demo). Result
- * verification through AnalyzerResults → Accept → AccessionResults reuses
- * existing helpers (see analyzer-demo-flow.spec.ts for the full pattern);
- * extending this spec to assert the resulted row is a sibling commit once a
- * pre-existing seeded sample/accession is wired in (TODO).
+ * Two tests in one file using createDemoPresentation so the
+ * harness-demo-video project records a narrated walkthrough.
  */
 
 import { expect, test } from "../../../helpers/test-base";
@@ -23,94 +20,129 @@ import {
   teardownAnalyzer,
 } from "../../../helpers/create-analyzer-from-profile";
 import { sendOrderToAnalyzer } from "../../../helpers/send-analyzer-order";
-import { TEST_TIMEOUT, UI_TIMEOUT } from "../../../helpers/timeouts";
+import { acceptAndVerifyResults } from "../../../helpers/accept-results";
+import { openAnalyzerResultsByIdAndWaitForText } from "../../../helpers/results-ui";
+import { LONG_TIMEOUT, TEST_TIMEOUT, UI_TIMEOUT } from "../../../helpers/timeouts";
+import type { AnalyzerTestConfig } from "../../../helpers/analyzer-test-config";
 
+const RESULTS_TIMEOUT = 90_000;
+const SIMULATOR_URL = process.env.SIMULATOR_URL || "http://localhost:8085";
 const SEEDED_ACCESSION =
   process.env.OUTBOUND_DEMO_ACCESSION || "ACC-OUTBOUND-DEMO";
 
-test.describe("Outbound order dispatch — Send to analyzer", () => {
+const CONFIGS: AnalyzerTestConfig[] = [
+  {
+    name: "Demo: Outbound GeneXpert",
+    displayName: "GeneXpert ASTM (outbound)",
+    analyzerType: "MOLECULAR",
+    pluginType: "Generic ASTM",
+    profileName: "Cepheid GeneXpert (ASTM Mode)",
+    protocol: "ASTM",
+    mockAnalyzerName: "demo-outbound-gx",
+    port: 9600,
+    push: {
+      protocol: "ASTM",
+      simulatorUrl: SIMULATOR_URL,
+      template: "genexpert_astm",
+      destination: "tcp://placeholder:12001",
+    },
+  },
+  {
+    name: "Demo: Outbound Mindray",
+    displayName: "Mindray BC-5380 (outbound HL7)",
+    analyzerType: "HEMATOLOGY",
+    pluginType: "Generic HL7",
+    profileName: "Mindray BC-5380",
+    protocol: "HL7",
+    mockAnalyzerName: "demo-outbound-bc5380",
+    port: 5380,
+    push: {
+      protocol: "HL7",
+      simulatorUrl: SIMULATOR_URL,
+      template: "mindray_bc5380",
+      destination: "mllp://placeholder:2575",
+    },
+  },
+];
+
+test.describe("Outbound order dispatch — round-trip", () => {
   test.describe.configure({ timeout: TEST_TIMEOUT });
 
-  test("GeneXpert ASTM — order dispatched via bridge generic forwarder", async ({
-    page,
-  }) => {
-    const demo = createDemoPresentation(page, {
-      title: "GeneXpert (ASTM) — outbound order",
-      description:
-        "OE2 builds an ASTM H/P/O/L message and POSTs it through the bridge to the mock GeneXpert on port 9600.",
+  for (const config of CONFIGS) {
+    test(`${config.displayName} — dispatch + result returns + accept`, async ({
+      page,
+    }, testInfo) => {
+      const presentation = createDemoPresentation(page, testInfo);
+      let step = 0;
+
+      await presentation.title(
+        config.displayName,
+        "Outbound order dispatch → result round-trip",
+      );
+
+      const analyzer = await createAnalyzerFromProfile(
+        page,
+        config,
+        presentation,
+      );
+
+      try {
+        await presentation.step(
+          ++step,
+          `Open ModifyOrder for accession ${SEEDED_ACCESSION}`,
+        );
+        await page.goto(`/ModifyOrder?accessionNumber=${SEEDED_ACCESSION}`);
+        await expect(page.getByRole("button", {
+          name: /send to analyzer/i,
+        })).toBeVisible({ timeout: UI_TIMEOUT });
+
+        await presentation.step(
+          ++step,
+          `Click 'Send to analyzer' and dispatch to ${config.displayName}`,
+        );
+        await sendOrderToAnalyzer(page, { analyzerName: config.name });
+        await presentation.evidence(
+          `${config.name}-dispatched`.replace(/[^a-zA-Z0-9._-]/g, "-"),
+        );
+
+        await presentation.step(
+          ++step,
+          "Wait for the result to return on AnalyzerResults",
+        );
+        // The mock receives the order and pushes a matching result back via
+        // fresh TCP/MLLP to the bridge listener; the bridge forwards FHIR to
+        // OE2; the existing inbound import keys the result to the seeded
+        // accession via O.3 / OBR-3.
+        await openAnalyzerResultsByIdAndWaitForText(
+          page,
+          analyzer.id,
+          SEEDED_ACCESSION,
+          {
+            timeoutMs: RESULTS_TIMEOUT,
+            perAttemptTimeoutMs: LONG_TIMEOUT,
+            allExpectedAccessions: [SEEDED_ACCESSION],
+          },
+        );
+        await presentation.evidence(
+          `${config.name}-result-staged`.replace(/[^a-zA-Z0-9._-]/g, "-"),
+        );
+
+        await presentation.step(
+          ++step,
+          "Accept the result and verify on AccessionResults",
+        );
+        await acceptAndVerifyResults(
+          page,
+          presentation,
+          step,
+          SEEDED_ACCESSION,
+          testInfo,
+          1, // accept just the one seeded accession
+          config.name.replace(/[^a-zA-Z0-9._-]/g, "-"),
+        );
+      } finally {
+        await teardownAnalyzer(page, analyzer);
+      }
     });
-
-    const analyzer = await createAnalyzerFromProfile(page, {
-      name: "Demo: Outbound GeneXpert",
-      displayName: "GeneXpert ASTM (outbound)",
-      analyzerType: "MOLECULAR",
-      pluginType: "Generic ASTM",
-      profileName: "Cepheid GeneXpert (ASTM Mode)",
-      protocol: "ASTM",
-      mockAnalyzerName: "demo-outbound-gx",
-      port: 9600,
-    });
-
-    try {
-      await demo.step("Open ModifyOrder for the seeded accession");
-      await page.goto(`/ModifyOrder?accessionNumber=${SEEDED_ACCESSION}`);
-      await expect(page.getByText(/Modify Order|Order/i)).toBeVisible({
-        timeout: UI_TIMEOUT,
-      });
-
-      await demo.step("Click 'Send to analyzer' and dispatch to GeneXpert");
-      await sendOrderToAnalyzer(page, {
-        analyzerName: "Outbound GeneXpert",
-      });
-
-      // TODO follow-up: poll mock simulate-api (port 8085) for the inbound
-      // order event, then wait for the resulted row on AccessionResults page
-      // using openAnalyzerResultsByIdAndWaitForText / acceptAndVerifyResults
-      // from existing helpers. The mock now triggers a result push on inbound
-      // ASTM order receipt (see analyzer-mock-server PR-B).
-    } finally {
-      await teardownAnalyzer(page, analyzer);
-    }
-  });
-
-  test("Mindray HL7 — order dispatched via bridge outbound MLLP", async ({
-    page,
-  }) => {
-    const demo = createDemoPresentation(page, {
-      title: "Mindray BC-5380 (HL7) — outbound order",
-      description:
-        "OE2 generates an ORM^O01 and POSTs it through the bridge's new /api/send-hl7 endpoint; bridge MLLP-sends to mock Mindray on port 5380.",
-    });
-
-    const analyzer = await createAnalyzerFromProfile(page, {
-      name: "Demo: Outbound Mindray",
-      displayName: "Mindray BC-5380 (outbound HL7)",
-      analyzerType: "HEMATOLOGY",
-      pluginType: "Generic HL7",
-      profileName: "Mindray BC-5380",
-      protocol: "HL7",
-      mockAnalyzerName: "demo-outbound-bc5380",
-      port: 5380,
-    });
-
-    try {
-      await demo.step("Open ModifyOrder for the seeded accession");
-      await page.goto(`/ModifyOrder?accessionNumber=${SEEDED_ACCESSION}`);
-      await expect(page.getByText(/Modify Order|Order/i)).toBeVisible({
-        timeout: UI_TIMEOUT,
-      });
-
-      await demo.step("Click 'Send to analyzer' and dispatch to Mindray");
-      await sendOrderToAnalyzer(page, {
-        analyzerName: "Outbound Mindray",
-      });
-
-      // TODO follow-up: assert the bridge MLLP listener receives the ORU^R01
-      // result the mock pushes back (mock _push_order_result targets
-      // ORDER_RESULT_PUSH_HOST:PORT → openelis-analyzer-bridge:2575 by default).
-      // OE2's inbound import keys the result to SEEDED_ACCESSION via OBR-3.
-    } finally {
-      await teardownAnalyzer(page, analyzer);
-    }
-  });
+  }
 });
