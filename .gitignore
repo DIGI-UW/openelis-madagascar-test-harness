@@ -12,3 +12,17 @@ tests/playwright/node_modules/
 .idea/
 .DS_Store
 *.swp
+
+# PHI / UAT artifacts — patient-detail screenshots and lab data exports must
+# NEVER be committed (data-governance). The repo has zero tracked files of
+# these types; use `git add -f` for an intentional, PHI-free fixture.
+*.png
+*.csv
+*.xls
+*.xlsx
+*.pdf
+
+# Secrets / credentials — env config and Playwright stored auth state.
+.env
+**/.env
+**/.auth/
