@@ -26,8 +26,23 @@ export async function sendOrderToAnalyzer(
   // Carbon <Select> exposes a native <select>; pick the option whose visible
   // label contains the analyzer name (the option text is
   // "<name> (<protocolVersion>)").
+  // Read the native <select>'s options directly (robust for native selects) and
+  // pick the one whose text contains the analyzer name; select by value.
   const select = page.locator('select#send-order-analyzer-select');
-  await select.selectOption({ label: new RegExp(opts.analyzerName, "i") });
+  await expect(select).toBeVisible({ timeout: UI_TIMEOUT });
+  const options = await select.evaluate((el: HTMLSelectElement) =>
+    Array.from(el.options).map((o) => ({ value: o.value, text: o.textContent || "" })),
+  );
+  const match = options.find((o) =>
+    o.text.toLowerCase().includes(opts.analyzerName.toLowerCase()),
+  );
+  if (!match) {
+    throw new Error(
+      `No analyzer option matching "${opts.analyzerName}" in send-order dropdown. ` +
+        `Available options: ${JSON.stringify(options)}`,
+    );
+  }
+  await select.selectOption(match.value);
 
   // The modal's primary "Send" button matches name /^Send$/ exactly, so it
   // doesn't collide with the outer "Send to analyzer" trigger.

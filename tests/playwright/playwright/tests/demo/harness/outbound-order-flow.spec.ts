@@ -27,8 +27,16 @@ import type { AnalyzerTestConfig } from "../../../helpers/analyzer-test-config";
 
 const RESULTS_TIMEOUT = 90_000;
 const SIMULATOR_URL = process.env.SIMULATOR_URL || "http://localhost:8085";
-const SEEDED_ACCESSION =
-  process.env.OUTBOUND_DEMO_ACCESSION || "ACC-OUTBOUND-DEMO";
+
+// Each analyzer dispatches to a seeded accession whose ordered test resolves
+// (via LOINC) to a code the analyzer's profile covers: GeneXpert→CT (21613-5),
+// Mindray BC-5380→WBC (6690-2).
+const ACCESSION_BY_MOCK: Record<string, string> = {
+  "demo-outbound-gx":
+    process.env.OUTBOUND_DEMO_ACCESSION_GX || "DEV01260000000000004",
+  "demo-outbound-bc5380":
+    process.env.OUTBOUND_DEMO_ACCESSION_BC5380 || "DEV01260000000000016",
+};
 
 const CONFIGS: AnalyzerTestConfig[] = [
   {
@@ -74,6 +82,7 @@ test.describe("Outbound order dispatch — round-trip", () => {
     }, testInfo) => {
       const presentation = createDemoPresentation(page, testInfo);
       let step = 0;
+      const SEEDED_ACCESSION = ACCESSION_BY_MOCK[config.mockAnalyzerName];
 
       await presentation.title(
         config.displayName,
@@ -89,9 +98,12 @@ test.describe("Outbound order dispatch — round-trip", () => {
       try {
         await presentation.step(
           ++step,
-          `Open ModifyOrder for accession ${SEEDED_ACCESSION}`,
+          `Open accession results for ${SEEDED_ACCESSION}`,
         );
-        await page.goto(`/ModifyOrder?accessionNumber=${SEEDED_ACCESSION}`);
+        // Dispatch lives on the accession-results page (stable URL); navigating
+        // here auto-runs the accession search, and once the order's tests load
+        // the "Send to analyzer" action appears.
+        await page.goto(`/AccessionResults?accessionNumber=${SEEDED_ACCESSION}`);
         await expect(page.getByRole("button", {
           name: /send to analyzer/i,
         })).toBeVisible({ timeout: UI_TIMEOUT });
@@ -115,7 +127,7 @@ test.describe("Outbound order dispatch — round-trip", () => {
         // accession via O.3 / OBR-3.
         await openAnalyzerResultsByIdAndWaitForText(
           page,
-          analyzer.id,
+          analyzer.analyzerId,
           SEEDED_ACCESSION,
           {
             timeoutMs: RESULTS_TIMEOUT,
@@ -141,7 +153,7 @@ test.describe("Outbound order dispatch — round-trip", () => {
           config.name.replace(/[^a-zA-Z0-9._-]/g, "-"),
         );
       } finally {
-        await teardownAnalyzer(page, analyzer);
+        await teardownAnalyzer(page, config, analyzer.analyzerId);
       }
     });
   }
