@@ -28,6 +28,26 @@ services:
         build:
             context: ${BRIDGE_REPO:-../openelis-analyzer-bridge}
 
+    # db, fhir, proxy Dockerfiles COPY paths assume the OE2 repo root as
+    # build context (db/dbInit/, fhir/, tomcat/, etc.) — context must be
+    # ${OE_REPO}, not the subdirectory the Dockerfile lives in.
+    db.openelis.org:
+        image: itechuw/openelis-global-2-database:local
+        build:
+            context: ${OE_REPO:-../OpenELIS-Global-2}
+            dockerfile: db/Dockerfile
+
+    fhir.openelis.org:
+        image: itechuw/openelis-global-2-fhir:local
+        build:
+            context: ${OE_REPO:-../OpenELIS-Global-2}
+            dockerfile: fhir/Dockerfile
+
+    proxy:
+        image: itechuw/openelis-global-2-proxy:local
+        build:
+            context: ${OE_REPO:-../OpenELIS-Global-2}/nginx-proxy
+
 # Note: analyzer-mock's `build:` is defined inside compose.validate.yaml
 # itself (since the service is also defined there). When compose.validate.yaml
 # is layered, the mock build is already wired — no separate overlay needed

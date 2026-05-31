@@ -80,8 +80,19 @@ echo "[distro] using $DISTRO_REPO"
 # default (wrong in cache mode).
 export DISTRO_REPO
 
+# Distro's canonical compose is docker-compose.yml. Local mgtest devs
+# maintain a sibling compose.yaml with :local pins for fast rebuild — that
+# file is gitignored (saved memory: distro compose.yaml is local-only).
+# Prefer the local override when present; fall back to the canonical file.
+if [[ -f "${DISTRO_REPO}/compose.yaml" ]]; then
+  DISTRO_COMPOSE="${DISTRO_REPO}/compose.yaml"
+else
+  DISTRO_COMPOSE="${DISTRO_REPO}/docker-compose.yml"
+fi
+echo "[distro] compose file: $DISTRO_COMPOSE"
+
 COMPOSE="docker compose \
-  -f ${DISTRO_REPO}/compose.yaml \
+  -f ${DISTRO_COMPOSE} \
   -f compose.dev.yaml \
   -f compose.validate.yaml"
 
@@ -105,7 +116,7 @@ OE_REPO="${OE_REPO:-$(realpath "$ROOT/../OpenELIS-Global-2" 2>/dev/null || echo 
 for arg in "$@"; do
   case "$arg" in
     --clean) CLEAN_FLAG="-v"; echo "[mode] --clean: volumes will be wiped";;
-    --rebuild) REBUILD_FLAG="yes"; echo "[mode] --rebuild: local images will be built";;
+    --rebuild|--build) REBUILD_FLAG="yes"; echo "[mode] $arg: local images will be built";;
     --seed-harness) SEED_HARNESS_FLAG="yes"; echo "[mode] --seed-harness: seed 7 harness analyzers via REST API (CI parity)";;
   esac
 done
