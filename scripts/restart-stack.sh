@@ -75,6 +75,10 @@ if [[ -z "$DISTRO_REPO" || ! -d "$DISTRO_REPO" ]]; then
   fi
 fi
 echo "[distro] using $DISTRO_REPO"
+# Export so compose.validate.yaml's ${DISTRO_REPO} interpolation (analyzer-profiles
+# bind mount) resolves to the resolved repo, not its `../openelis-madagascar-distro`
+# default (wrong in cache mode).
+export DISTRO_REPO
 
 COMPOSE="docker compose \
   -f ${DISTRO_REPO}/compose.yaml \
