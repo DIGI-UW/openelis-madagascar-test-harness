@@ -102,12 +102,12 @@ export class AnalyzerFormPage {
   }
 
   /**
-   * Select an item from a Carbon Dropdown using keyboard navigation.
+   * Select an item from a Carbon Dropdown.
    *
-   * Carbon Dropdown (non-filterable) supports: open → ArrowDown/Up → Enter.
-   * We press ArrowDown until the target option gets aria-selected, then Enter.
-   * This avoids clicking inside the listbox overlay, which causes flaky
-   * pointer-interception on adjacent dropdowns during close animation.
+   * Open the listbox, then click the target option directly. Carbon's keyboard
+   * highlight uses aria-activedescendant (not aria-selected), so an
+   * "ArrowDown until aria-selected" loop never converges and can't reach options
+   * far down the list; scrollIntoView + click is robust to list length.
    */
   private async selectDropdownItem(dropdown: Locator, text: string) {
     const trigger = dropdown.locator(

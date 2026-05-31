@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { UI_TIMEOUT } from "./timeouts";
 
 /**
- * Drive the SendToAnalyzerButton flow on the ModifyOrder page:
+ * Drive the SendToAnalyzerButton flow on the accession results page:
  *   1. Click the "Send to analyzer" Carbon Button (data-cy="send-to-analyzer").
  *   2. Wait for the modal to open.
  *   3. Pick the analyzer by display name (matched as substring of the option text).
@@ -10,7 +10,7 @@ import { UI_TIMEOUT } from "./timeouts";
  *   5. Assert the success notification appears with text "Order dispatched".
  *
  * Callers stage the analyzer (createAnalyzerFromProfile) and navigate the page
- * to ModifyOrder?accessionNumber=... before invoking.
+ * to AccessionResults?accessionNumber=... before invoking.
  */
 export async function sendOrderToAnalyzer(
   page: Page,

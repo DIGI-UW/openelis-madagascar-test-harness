@@ -1,8 +1,8 @@
 /**
  * Outbound Order Dispatch — round-trip demo flow
  *
- *   OE2 ModifyOrder ─ Send to analyzer button
- *     → bridge (HTTPListenController for ASTM, /api/send-hl7 for HL7)
+ *   OE2 AccessionResults ─ Send to analyzer button
+ *     → bridge /api/orders (LOINC → analyzer code → ASTM/HL7, built bridge-side)
  *     → mock analyzer (genexpert_astm:9600 / mindray_bc5380:5380)
  *     → mock pushes a matching result via FRESH connection back to the
  *       bridge's inbound listener (ASTM:12001 / MLLP:2575)
