@@ -98,6 +98,7 @@ fi
 COMPOSE_FILES=(
   -f "${DISTRO_COMPOSE}"
   -f compose.dev.yaml
+  -f compose.validate.yaml
 )
 
 # Validate the service name exists.
