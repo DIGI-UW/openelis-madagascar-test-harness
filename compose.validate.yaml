@@ -28,11 +28,17 @@ services:
     volumes:
       - analyzer-imports:/data/analyzer-imports
       - /var/run/docker.sock:/var/run/docker.sock
+      # Same canonical profiles OE2 reads (distro mounts these at /data/analyzer-profiles).
+      # The mock derives its assay menu + result expression from these — single source of truth.
+      - ${DISTRO_REPO:-../openelis-madagascar-distro}/configs/analyzer-profiles:/data/analyzer-profiles:ro
     environment:
       ASTM_PORT_TEMPLATES: '{"9600":"genexpert_astm","5380":"mindray_bc5380","6001":"mindray_bs200","6002":"mindray_bs300"}'
       RESPONSE_DELAY_MS: "0"
       BRIDGE_CONTAINER_NAME: openelis-analyzer-bridge
       MOCK_CONTAINER_NAME: openelis-analyzer-mock
+      # Root of the canonical profiles tree (subdirs astm/ hl7/ file/). The mock
+      # resolves <protocol>/<profile>.json under here.
+      ANALYZER_PROFILES_DIR: /data/analyzer-profiles
     command:
       - python
       - -u

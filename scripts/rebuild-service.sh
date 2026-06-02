@@ -79,6 +79,11 @@ if [[ -z "$DISTRO_REPO" || ! -d "$DISTRO_REPO" ]]; then
   fi
 fi
 
+# Export so compose.validate.yaml's ${DISTRO_REPO} interpolation (the
+# analyzer-profiles bind mount) resolves to the repo we actually resolved —
+# not its `../openelis-madagascar-distro` default, which is wrong in cache mode.
+export DISTRO_REPO
+
 OE_REPO="${OE_REPO:-$(realpath "$ROOT/../OpenELIS-Global-2" 2>/dev/null || echo "")}"
 BRIDGE_REPO="${BRIDGE_REPO:-$(realpath "$ROOT/../openelis-analyzer-bridge" 2>/dev/null || echo "")}"
 
@@ -93,6 +98,7 @@ fi
 COMPOSE_FILES=(
   -f "${DISTRO_COMPOSE}"
   -f compose.dev.yaml
+  -f compose.validate.yaml
 )
 
 # Validate the service name exists.

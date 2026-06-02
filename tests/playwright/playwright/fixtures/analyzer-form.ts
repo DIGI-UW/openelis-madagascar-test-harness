@@ -102,12 +102,12 @@ export class AnalyzerFormPage {
   }
 
   /**
-   * Select an item from a Carbon Dropdown using keyboard navigation.
+   * Select an item from a Carbon Dropdown.
    *
-   * Carbon Dropdown (non-filterable) supports: open → ArrowDown/Up → Enter.
-   * We press ArrowDown until the target option gets aria-selected, then Enter.
-   * This avoids clicking inside the listbox overlay, which causes flaky
-   * pointer-interception on adjacent dropdowns during close animation.
+   * Open the listbox, then click the target option directly. Carbon's keyboard
+   * highlight uses aria-activedescendant (not aria-selected), so an
+   * "ArrowDown until aria-selected" loop never converges and can't reach options
+   * far down the list; scrollIntoView + click is robust to list length.
    */
   private async selectDropdownItem(dropdown: Locator, text: string) {
     const trigger = dropdown.locator(
@@ -121,27 +121,15 @@ export class AnalyzerFormPage {
     await expect(listbox).toBeVisible({ timeout: UI_TIMEOUT });
 
     try {
-      // Reset to top, then navigate down to the target option
+      // Click the target option directly. Carbon's keyboard highlight uses
+      // aria-activedescendant (not aria-selected), so the old "ArrowDown until
+      // aria-selected" loop never converged and also couldn't reach options >20
+      // rows down. scrollIntoView + click is robust to list length and to which
+      // aria attribute Carbon uses for the highlight.
       const option = listbox.getByRole("option", { name: text }).first();
       await expect(option).toBeVisible({ timeout: UI_TIMEOUT });
-
-      await this.page.keyboard.press("Home");
-      const maxPresses = 20;
-      for (let i = 0; i < maxPresses; i++) {
-        const selected = await option.getAttribute("aria-selected");
-        if (selected === "true") break;
-        await this.page.keyboard.press("ArrowDown");
-      }
-
-      // Fail explicitly if we didn't reach the target
-      const finalSelected = await option.getAttribute("aria-selected");
-      if (finalSelected !== "true") {
-        throw new Error(
-          `Could not navigate to option "${text}" after ${maxPresses} ArrowDown presses`,
-        );
-      }
-
-      await this.page.keyboard.press("Enter");
+      await option.scrollIntoViewIfNeeded();
+      await option.click();
     } catch (e) {
       // Close the listbox so it doesn't interfere with subsequent interactions
       await this.page.keyboard.press("Escape");

@@ -495,6 +495,11 @@ export async function createAnalyzerFromProfile(
     config.name,
   );
 
+  // The outbound "Send to analyzer" dropdown only lists LIS_INITIATED/BOTH
+  // analyzers. No test-side intervention is needed to make profile-created
+  // analyzers dispatchable: OE2 (AnalyzerRestController) sets communicationMode
+  // from the profile's communication.mode at create time, and the demo profiles
+  // are all communication.mode=BOTH.
   return { analyzerId, assignedIp };
 }
 

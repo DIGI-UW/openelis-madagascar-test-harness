@@ -90,7 +90,6 @@ jobs:
       - name: Run focused analyzer subset
         id: run_subset
         if: steps.api_contract.outcome == 'success'
-        continue-on-error: true
         run: |
           set -euo pipefail
           COMPOSE_PROFILES=demo docker compose ${{ env.COMPOSE_FILES }} run --rm demo-tests \
