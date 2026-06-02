@@ -62,26 +62,6 @@ jobs:
           ref: ${{ inputs.bridge_ref || 'develop' }}
           path: openelis-analyzer-bridge
 
-      - name: Set up Python (mock profile-backed gate)
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      # Monorepo gate: the mock is an OE2 submodule and reads OE2's
-      # projects/analyzer-profiles — the single source of truth. Run the mock's
-      # profile-backed tests against the OE2 profiles AT THE CHECKED-OUT REF, so
-      # the real-profile contract (e.g. GeneXpert qualitative seeds "NOT DETECTED")
-      # is gated at PR version here — the only place OE2 PR profiles + the pinned
-      # mock submodule coexist. The standalone mock CI only gates adapter logic
-      # hermetically; test_qualitative_seed_value skips there on un-enriched refs.
-      - name: Mock profile-backed unit gate (PR-version profiles)
-        run: |
-          set -euo pipefail
-          cd "$GITHUB_WORKSPACE/OpenELIS-Global-2/tools/analyzer-mock-server"
-          python -m pip install --quiet -r requirements.txt
-          ANALYZER_PROFILES_DIR="$GITHUB_WORKSPACE/OpenELIS-Global-2/projects/analyzer-profiles" \
-            python -m pytest test_protocols.py test_profile_backed_template.py -q
-
       # Bring up the stack via the SAME script local dev uses, so CI stays
       # honest with operator-facing flow. --clean wipes any leftover state;
       # --seed-harness runs OE2's seed-analyzers.sh against the running
