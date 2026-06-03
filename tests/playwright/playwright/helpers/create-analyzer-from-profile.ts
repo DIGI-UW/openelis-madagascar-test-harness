@@ -43,7 +43,28 @@ function getAnalyzerApiUrl(): string {
  * The mock server creates a Docker network with a unique subnet per analyzer,
  * giving each a stable IP for bridge identification.
  */
-async function createMockNetwork(
+const MOCK_CREATE_MAX_ATTEMPTS = 4;
+
+/** Look up an already-provisioned mock analyzer's source IP from the registry. */
+async function lookupMockIp(
+  page: Page,
+  mockName: string,
+): Promise<string | null> {
+  try {
+    const listResp = await page.request.get(`${SIMULATOR_URL}/analyzers`);
+    const list = listResp.ok() ? await listResp.json() : null;
+    await listResp.dispose();
+    const existing = list?.analyzers?.find(
+      (a: { name?: string; ip?: string }) => a?.name === mockName,
+    );
+    return existing?.ip ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** One provisioning attempt: returns the source IP, or null on any failure. */
+async function attemptCreateMockNetwork(
   page: Page,
   mockName: string,
   template: string,
@@ -55,164 +76,45 @@ async function createMockNetwork(
     });
     const status = response.status();
     const textBody = await response.text().catch(() => "");
-    // #region agent log
-    fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0246c3",
-      },
-      body: JSON.stringify({
-        sessionId: "0246c3",
-        runId: "genexpert-connection-pre",
-        hypothesisId: "H6",
-        location: "helpers/create-analyzer-from-profile.ts:createMockNetwork-post",
-        message: "mock create response",
-        data: {
-          mockName,
-          status,
-          ok: response.ok(),
-          bodySnippet: textBody.slice(0, 300),
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    if (response.ok()) {
+    await response.dispose();
+    if (status >= 200 && status < 300) {
       const body = JSON.parse(textBody) as { ip?: string };
-      await response.dispose();
       return body.ip || null;
     }
-    await response.dispose();
-    // 409 = already exists, which is fine (idempotent)
+    // 409 = already exists (idempotent) — recover the IP from the registry.
     if (status === 409) {
-      // Fetch existing
-      const listResp = await page.request.get(`${SIMULATOR_URL}/analyzers`);
-      const list = listResp.ok() ? await listResp.json() : null;
-      // #region agent log
-      fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "0246c3",
-        },
-        body: JSON.stringify({
-          sessionId: "0246c3",
-          runId: "genexpert-connection-pre",
-          hypothesisId: "H7",
-          location:
-            "helpers/create-analyzer-from-profile.ts:createMockNetwork-list",
-          message: "mock list fallback response",
-          data: {
-            mockName,
-            listOk: listResp.ok(),
-            analyzerCount: Array.isArray(list?.analyzers)
-              ? list.analyzers.length
-              : -1,
-            analyzerShape: Array.isArray(list?.analyzers)
-              ? Object.keys(list.analyzers[0] || {})
-              : [],
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-      await listResp.dispose();
-      if (list) {
-        const existing = list.analyzers?.find(
-          (a: { name: string }) => a.name === mockName,
-        );
-        return existing?.ip || null;
-      }
+      return await lookupMockIp(page, mockName);
     }
     return null;
-  } catch (error) {
-    // #region agent log
-    fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "0246c3",
-      },
-      body: JSON.stringify({
-        sessionId: "0246c3",
-        runId: "genexpert-connection-pre",
-        hypothesisId: "H8",
-        location:
-          "helpers/create-analyzer-from-profile.ts:createMockNetwork-catch",
-        message: "mock create threw",
-        data: {
-          mockName,
-          error: error instanceof Error ? error.message.slice(0, 250) : "unknown",
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
-    try {
-      const listResp = await page.request.get(`${SIMULATOR_URL}/analyzers`);
-      const list = listResp.ok() ? await listResp.json() : null;
-      // #region agent log
-      fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "0246c3",
-        },
-        body: JSON.stringify({
-          sessionId: "0246c3",
-          runId: "genexpert-connection-pre",
-          hypothesisId: "H10",
-          location:
-            "helpers/create-analyzer-from-profile.ts:createMockNetwork-recover",
-          message: "mock create recovery list response",
-          data: {
-            mockName,
-            listOk: listResp.ok(),
-            analyzerCount: Array.isArray(list?.analyzers)
-              ? list.analyzers.length
-              : -1,
-          },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {});
-      // #endregion
-      await listResp.dispose();
-      if (Array.isArray(list?.analyzers)) {
-        const existing = list.analyzers.find(
-          (a: { name?: string; ip?: string }) => a?.name === mockName,
-        );
-        if (existing?.ip) {
-          // #region agent log
-          fetch("http://localhost:7356/ingest/dd709e30-65ee-44b3-9fc7-0d27deb0de7e", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "0246c3",
-            },
-            body: JSON.stringify({
-              sessionId: "0246c3",
-              runId: "genexpert-connection-pre",
-              hypothesisId: "H11",
-              location:
-                "helpers/create-analyzer-from-profile.ts:createMockNetwork-recover",
-              message: "recovered mock ip after create failure",
-              data: {
-                mockName,
-                recoveredIp: existing.ip,
-              },
-              timestamp: Date.now(),
-            }),
-          }).catch(() => {});
-          // #endregion
-          return existing.ip;
-        }
-      }
-    } catch {
-      // Best-effort recovery only
-    }
-    return null;
+  } catch {
+    // Transient request failure — the create may have partially landed; try to
+    // recover the IP, else null so the caller retries the whole create.
+    return await lookupMockIp(page, mockName);
   }
+}
+
+/**
+ * Provision a mock analyzer network and return its source IP.
+ *
+ * Provisioning is convergent/idempotent on the mock side, so a transient
+ * Docker-churn failure (the historical `ip=missing`) is retried rather than
+ * propagated: a later attempt adopts the partially-created network and returns
+ * the deterministic IP. Returns null only if every attempt fails.
+ */
+async function createMockNetwork(
+  page: Page,
+  mockName: string,
+  template: string,
+  port: number,
+): Promise<string | null> {
+  for (let attempt = 1; attempt <= MOCK_CREATE_MAX_ATTEMPTS; attempt++) {
+    const ip = await attemptCreateMockNetwork(page, mockName, template, port);
+    if (ip) return ip;
+    if (attempt < MOCK_CREATE_MAX_ATTEMPTS) {
+      await page.waitForTimeout(500 * attempt);
+    }
+  }
+  return null;
 }
 
 /**
