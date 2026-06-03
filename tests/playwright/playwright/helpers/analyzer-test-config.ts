@@ -24,6 +24,13 @@ export interface PushConfig {
   simulatorUrl: string;
   /** Mock server template name (e.g., "quantstudio7", "genexpert_astm"). */
   template: string;
+  /**
+   * Provisioned mock analyzer *instance* name (ASTM/HL7 only). The instance is
+   * the single identity key: addressing /simulate by it yields both the
+   * template and the per-analyzer source IP, so the push sources from the
+   * analyzer's own interface. Falls back to `template` when absent.
+   */
+  mockAnalyzerName?: string;
   /** TCP/MLLP destination (ASTM/HL7 only). */
   destination?: string;
   /** Container path for file drop (FILE only, e.g., "/data/analyzer-imports/quantstudio-7/incoming"). */

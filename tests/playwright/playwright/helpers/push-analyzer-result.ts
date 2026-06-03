@@ -27,7 +27,11 @@ export async function pushAnalyzerResult(
   push: PushConfig,
   presentation: DemoPresentation,
 ): Promise<PushResult[]> {
-  const endpoint = `${push.simulatorUrl}/simulate/${push.protocol.toLowerCase()}/${push.template}`;
+  // Address the provisioned instance (single identity key) for TCP analyzers so
+  // the mock sources the push from the analyzer's own IP; FILE has no instance,
+  // so it falls back to the template name.
+  const target = push.mockAnalyzerName ?? push.template;
+  const endpoint = `${push.simulatorUrl}/simulate/${push.protocol.toLowerCase()}/${target}`;
 
   const body: Record<string, unknown> = { count: 1 };
 
@@ -49,6 +53,21 @@ export async function pushAnalyzerResult(
 
   const json = await response.json();
   await response.dispose();
+
+  // Fail fast on non-delivery. The mock returns HTTP 200 even when every push
+  // failed (e.g. the analyzer network attach hadn't landed), so without this a
+  // delivery failure surfaces only as an opaque 90s results-poll timeout. For
+  // ASTM/HL7 the per-message `pushed` flag carries the truth and `error` the
+  // reason; assert it here so the failure is immediate and legible.
+  if (Array.isArray(json.results)) {
+    for (const r of json.results as Array<{ pushed?: boolean; error?: string }>) {
+      expect(
+        r.pushed,
+        `Mock did not deliver result via ${endpoint}: ${r.error ?? "no reason given"}`,
+      ).toBe(true);
+    }
+  }
+
   // FILE: bridge file watcher + FHIR parse + forward to OE can exceed 2s under load.
   await presentation.pause(push.protocol === "FILE" ? 12_000 : 1_000);
 
