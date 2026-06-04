@@ -27,7 +27,11 @@ export async function pushAnalyzerResult(
   push: PushConfig,
   presentation: DemoPresentation,
 ): Promise<PushResult[]> {
-  const endpoint = `${push.simulatorUrl}/simulate/${push.protocol.toLowerCase()}/${push.template}`;
+  // Address the provisioned instance (single identity key) for TCP analyzers so
+  // the mock sources the push from the analyzer's own IP; FILE has no instance,
+  // so it falls back to the template name.
+  const target = push.mockAnalyzerName ?? push.template;
+  const endpoint = `${push.simulatorUrl}/simulate/${push.protocol.toLowerCase()}/${target}`;
 
   const body: Record<string, unknown> = { count: 1 };
 
@@ -49,6 +53,23 @@ export async function pushAnalyzerResult(
 
   const json = await response.json();
   await response.dispose();
+
+  // Fail fast on non-delivery — but ONLY when delivery was actually requested
+  // (a `destination` was given). A generate-only push (no destination) returns
+  // `pushed: false` by design, so asserting there would wrongly fail contract/
+  // smoke tests that never push to the bridge. When a destination IS set, the
+  // mock still returns HTTP 200 even if every push failed, so the per-message
+  // `pushed` flag is the real signal; assert it here so non-delivery is
+  // immediate and legible instead of an opaque 90s results-poll timeout.
+  if (push.destination && Array.isArray(json.results)) {
+    for (const r of json.results as Array<{ pushed?: boolean; error?: string }>) {
+      expect(
+        r.pushed,
+        `Mock did not deliver result via ${endpoint}: ${r.error ?? "no reason given"}`,
+      ).toBe(true);
+    }
+  }
+
   // FILE: bridge file watcher + FHIR parse + forward to OE can exceed 2s under load.
   await presentation.pause(push.protocol === "FILE" ? 12_000 : 1_000);
 
