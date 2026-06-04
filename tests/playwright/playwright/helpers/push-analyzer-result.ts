@@ -54,12 +54,14 @@ export async function pushAnalyzerResult(
   const json = await response.json();
   await response.dispose();
 
-  // Fail fast on non-delivery. The mock returns HTTP 200 even when every push
-  // failed (e.g. the analyzer network attach hadn't landed), so without this a
-  // delivery failure surfaces only as an opaque 90s results-poll timeout. For
-  // ASTM/HL7 the per-message `pushed` flag carries the truth and `error` the
-  // reason; assert it here so the failure is immediate and legible.
-  if (Array.isArray(json.results)) {
+  // Fail fast on non-delivery — but ONLY when delivery was actually requested
+  // (a `destination` was given). A generate-only push (no destination) returns
+  // `pushed: false` by design, so asserting there would wrongly fail contract/
+  // smoke tests that never push to the bridge. When a destination IS set, the
+  // mock still returns HTTP 200 even if every push failed, so the per-message
+  // `pushed` flag is the real signal; assert it here so non-delivery is
+  // immediate and legible instead of an opaque 90s results-poll timeout.
+  if (push.destination && Array.isArray(json.results)) {
     for (const r of json.results as Array<{ pushed?: boolean; error?: string }>) {
       expect(
         r.pushed,
