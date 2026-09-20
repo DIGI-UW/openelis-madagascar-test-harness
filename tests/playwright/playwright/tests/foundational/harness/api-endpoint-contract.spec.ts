@@ -33,11 +33,13 @@ const ENDPOINTS: EndpointProbe[] = [
     label: "POST create analyzer",
     body: { name: "__contract_test__" },
   },
-  // Profiles endpoint — used by cascade dropdown
+  // Profile catalog — used by cascade dropdown. Served by
+  // AnalyzerTypeRestController since analyzer mappings became profile-owned;
+  // the old /analyzer/profiles path no longer exists.
   {
     method: "GET",
-    path: "/api/OpenELIS-Global/rest/analyzer/profiles",
-    label: "GET analyzer profiles",
+    path: "/api/OpenELIS-Global/rest/analyzer-types",
+    label: "GET analyzer profile catalog",
   },
 ];
 
