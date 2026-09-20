@@ -21,21 +21,44 @@ on:
       distro_ref:
         description: "Distro ref to validate (tag or commit SHA on main)"
         required: true
-        default: "3.2.1.7-pre-refactor"
+        default: "3.2.2.0"
   schedule:
     - cron: "0 4 * * *"  # 04:00 UTC nightly
 
 env:
   DISTRO_REPO: DIGI-UW/openelis-madagascar-distro
-  DISTRO_REF: ${{ inputs.distro_ref || '3.2.1.7-pre-refactor' }}
+  DISTRO_REF: ${{ inputs.distro_ref || '3.2.2.0' }}
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # compose.validate.yaml builds the analyzer mock from OE2 and mounts the
+      # bridge's analyzer profiles into it; without both the mock cannot start.
+      OE_REPO: ${{ github.workspace }}/OpenELIS-Global-2
+      BRIDGE_REPO: ${{ github.workspace }}/openelis-analyzer-bridge
+      # Both of these resolve against compose's project directory, which is
+      # distro/ here because it holds the first -f argument. Anchor them.
+      HARNESS_DEMO_CONTEXT: ${{ github.workspace }}/tests/playwright
+      HARNESS_TEST_RESULTS_DIR: ${{ github.workspace }}/test-results
     steps:
       - name: Checkout harness
         uses: actions/checkout@v4
+
+      - name: Checkout OE2 (build context for the analyzer mock)
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/OpenELIS-Global-2
+          ref: develop
+          path: OpenELIS-Global-2
+
+      - name: Checkout bridge (analyzer profiles for the mock)
+        uses: actions/checkout@v4
+        with:
+          repository: DIGI-UW/openelis-analyzer-bridge
+          ref: develop
+          path: openelis-analyzer-bridge
 
       - name: Download distro candidate
         run: |
