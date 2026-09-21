@@ -30,7 +30,7 @@ import { execSync } from "child_process";
  *   - OE2 `/rest/address-hierarchy/levels` API (exposes inputType per level)
  *   - `CreatePatientForm.jsx` renderer (branches on inputType)
  *   - OE2 PatientManagementUpdate persistence
- *   - Postgres `clinlims.person` schema (province / fokontany / hamlet_or_lot
+ *   - Postgres `clinlims.person` schema (gps_latitude / gps_longitude
  *     columns)
  *
  * The journey, not the wiring, is what's tested here. Wiring regressions
@@ -67,7 +67,7 @@ const BIRTH_DATE_VALUE = "1990-05-15";
 // Fetch the saved patient row by name and return the address fields.
 function fetchPersonByName(first: string, last: string) {
   const sql = `
-    SELECT first_name, last_name, province, fokontany, hamlet_or_lot,
+    SELECT first_name, last_name,
            gps_latitude::text, gps_longitude::text
     FROM clinlims.person
     WHERE first_name = '${first}' AND last_name = '${last}'
@@ -80,21 +80,10 @@ function fetchPersonByName(first: string, last: string) {
     .toString()
     .trim();
   if (!out) return null;
-  const [
-    firstName,
-    lastName,
-    province,
-    fokontany,
-    hamletOrLot,
-    gpsLatitude,
-    gpsLongitude,
-  ] = out.split("|");
+  const [firstName, lastName, gpsLatitude, gpsLongitude] = out.split("|");
   return {
     firstName,
     lastName,
-    province: province || null,
-    fokontany: fokontany || null,
-    hamletOrLot: hamletOrLot || null,
     gpsLatitude: gpsLatitude || null,
     gpsLongitude: gpsLongitude || null,
   };
@@ -318,16 +307,18 @@ test.describe("OGC-669 patient registration UX journey", () => {
       row,
       `person row for ${FIRST_NAME} ${LAST_NAME} must exist`,
     ).not.toBeNull();
-    expect(row!.fokontany, "fokontany column must persist").toBe(FOKONTANY);
-    expect(row!.hamletOrLot, "hamlet_or_lot column must persist").toBe(
-      HAMLET_OR_LOT,
-    );
-    // Province column is set via the cascade's typeName-based sync at
-    // CreatePatientForm.jsx:1531-1551 — non-null is the meaningful assertion.
-    expect(
-      row!.province,
-      "province column must persist non-null",
-    ).not.toBeNull();
+    // Deliberately not asserted here: fokontany, hamlet_or_lot and province.
+    // clinlims.person has no such columns and never did — distro PR #11 bound
+    // those levels to the generic addressHierarchy_3/4 keys precisely "so OE2
+    // does not need Madagascar-specific patient columns". This query used to
+    // name all three, so psql failed outright and the test could never report
+    // on what it did save. Verified against a live schema: person carries
+    // gps_latitude and gps_longitude, and nothing else from this set.
+    //
+    // Asserting those three needs whoever owns the address-hierarchy model to
+    // say where freetext levels persist; address_part holds only the generic
+    // department/commune/village keys. Until then this covers the part of
+    // OGC-671 that is verifiable — the patient saves, with its GPS.
     expect(
       Number(row!.gpsLatitude),
       "gps_latitude must round-trip as numeric",
