@@ -50,7 +50,11 @@ const SUFFIX = letterSuffix();
 const FIRST_NAME = `Reg${SUFFIX}`;
 const LAST_NAME = `Journey${SUFFIX}`;
 const NATIONAL_ID = `NID-${Date.now()}`;
-const PRIMARY_PHONE = "+261-33-456-76-98"; // Madagascar format
+const PRIMARY_PHONE = "+261-37-456-76-98"; // OGC-671: local numbers are
+  // 37 (Orange) or 38 (Telecom) only. 33 is Airtel and validates false
+  // client-side, which leaves phoneValidation.status false and keeps
+  // #submit permanently disabled — the same superseded-requirement bug
+  // fixed in ogc-671-phone-format-madagascar.spec.ts.
 const FOKONTANY = `${RUN_ID}-fkt`;
 const HAMLET_OR_LOT = `${RUN_ID}-hml`;
 const GPS_LAT = "-18.879190";
