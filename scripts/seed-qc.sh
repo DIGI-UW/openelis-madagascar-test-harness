@@ -24,11 +24,11 @@
 #   (SD = 10% of target = 1250 × 0.10). Keeps `--qc-deviation N`
 #   deterministic — N maps 1:1 to N standard deviations on the OE side.
 #
-# Why analyzer_test_map join (not naive LOINC lookup):
+# Why the site-binding join (not a naive LOINC lookup):
 #   OE catalogs sometimes carry orphan duplicate test rows for the same
-#   LOINC. Ingest resolves test_id via analyzer_test_map; the seed must
-#   target the same row or the lot lives under a test_id ingest never
-#   sees, and Westgard never fires.
+#   LOINC. Ingest resolves test_id through the analyzer's bound site
+#   binding; the seed must target the same row, or the lot lives under
+#   a test_id ingest never sees, and Westgard never fires.
 #
 # Idempotent: safe to re-run — both POSTs accept 409 as already-exists.
 #
@@ -37,7 +37,7 @@
 #   BASE_URL=https://demo.example ./scripts/seed-qc.sh
 #
 # Requires the analyzer harness (seed-analyzers.sh) to have run first:
-# the GeneXpert analyzer must exist with HIV-VL in its analyzer_test_map.
+# the GeneXpert analyzer must exist with HIV-VL bound in its site binding.
 
 set -euo pipefail
 
@@ -79,7 +79,7 @@ fi
 
 echo "[seed-qc] Resolving HIV-VL test_id and GeneXpert instrument_id..."
 GENEXPERT_INST_ID="$(psql_query "SELECT id FROM clinlims.analyzer WHERE name='Cepheid GeneXpert (ASTM Mode)' ORDER BY id LIMIT 1;")"
-HIVVL_TEST_ID="$(psql_query "SELECT atm.test_id FROM clinlims.analyzer_test_map atm WHERE atm.analyzer_id=${GENEXPERT_INST_ID:-0} AND atm.analyzer_test_name='HIV-VL' LIMIT 1;")"
+HIVVL_TEST_ID="$(psql_query "SELECT sbt.test_id FROM clinlims.analyzer_site_binding_test sbt JOIN clinlims.analyzer a ON a.site_binding_revision_id = sbt.site_binding_revision_id WHERE a.id=${GENEXPERT_INST_ID:-0} AND sbt.source_row_key='HIV-VL' AND sbt.mapping_state='BOUND' LIMIT 1;")"
 
 if [ -z "$HIVVL_TEST_ID" ] || [ -z "$GENEXPERT_INST_ID" ]; then
   echo "[seed-qc] WARN: cannot seed QC — IDs unresolved (HIV-VL test_id='$HIVVL_TEST_ID', GeneXpert instrument_id='$GENEXPERT_INST_ID')" >&2
@@ -145,7 +145,7 @@ rm -f "$LOT_LOG"
 echo
 echo "[seed-qc] Resolving VIH-1 test_id and QuantStudio 5 instrument_id..."
 QS5_INST_ID="$(psql_query "SELECT id FROM clinlims.analyzer WHERE name='QuantStudio 5' ORDER BY id LIMIT 1;")"
-VIH1_TEST_ID="$(psql_query "SELECT atm.test_id FROM clinlims.analyzer_test_map atm WHERE atm.analyzer_id=${QS5_INST_ID:-0} AND atm.analyzer_test_name='VIH-1' LIMIT 1;")"
+VIH1_TEST_ID="$(psql_query "SELECT sbt.test_id FROM clinlims.analyzer_site_binding_test sbt JOIN clinlims.analyzer a ON a.site_binding_revision_id = sbt.site_binding_revision_id WHERE a.id=${QS5_INST_ID:-0} AND sbt.source_row_key='VIH-1' AND sbt.mapping_state='BOUND' LIMIT 1;")"
 
 if [ -z "$QS5_INST_ID" ] || [ -z "$VIH1_TEST_ID" ]; then
   echo "[seed-qc] WARN: skipping QuantStudio QC seed — IDs unresolved (VIH-1 test_id='$VIH1_TEST_ID', QuantStudio 5 instrument_id='$QS5_INST_ID')" >&2
@@ -220,7 +220,7 @@ fi
 echo
 echo "[seed-qc] Resolving GLU test_id and Mindray BS-200 instrument_id..."
 MINDRAY_BS200_INST_ID="$(psql_query "SELECT id FROM clinlims.analyzer WHERE name='Mindray BS-200' ORDER BY id LIMIT 1;")"
-GLU_TEST_ID="$(psql_query "SELECT atm.test_id FROM clinlims.analyzer_test_map atm WHERE atm.analyzer_id=${MINDRAY_BS200_INST_ID:-0} AND atm.analyzer_test_name='GLU' LIMIT 1;")"
+GLU_TEST_ID="$(psql_query "SELECT sbt.test_id FROM clinlims.analyzer_site_binding_test sbt JOIN clinlims.analyzer a ON a.site_binding_revision_id = sbt.site_binding_revision_id WHERE a.id=${MINDRAY_BS200_INST_ID:-0} AND sbt.source_row_key='GLU' AND sbt.mapping_state='BOUND' LIMIT 1;")"
 
 if [ -z "$MINDRAY_BS200_INST_ID" ] || [ -z "$GLU_TEST_ID" ]; then
   echo "[seed-qc] WARN: skipping Mindray BS-200 QC seed — IDs unresolved (GLU test_id='$GLU_TEST_ID', Mindray BS-200 instrument_id='$MINDRAY_BS200_INST_ID')" >&2
