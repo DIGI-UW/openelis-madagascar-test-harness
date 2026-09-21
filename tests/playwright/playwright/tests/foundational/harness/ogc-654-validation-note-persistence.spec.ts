@@ -161,9 +161,13 @@ test.describe("OGC-654 UI-driven note persistence", () => {
       waitUntil: "domcontentloaded",
     });
 
-    // Wait for the data fetch + table render.
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await page.waitForTimeout(1000); // give React time to render Carbon DataTable
+    // Wait for the data fetch + table render. Not networkidle: the app polls,
+    // so the network never goes idle and waitForLoadState consumes the entire
+    // test budget instead of returning. Wait for the thing this test actually
+    // needs — the Notes textarea the Carbon DataTable renders per row.
+    await expect(page.locator("textarea").first()).toBeVisible({
+      timeout: 30_000,
+    });
 
     await page.screenshot({
       path: `${SHOTS}/01-loaded.png`,

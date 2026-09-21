@@ -111,9 +111,17 @@ test.describe("OGC-669 patient registration UX journey", () => {
       waitUntil: "domcontentloaded",
       timeout: NAV_TIMEOUT,
     });
-    await page.waitForLoadState("networkidle").catch(() => {});
+    // No networkidle wait here. The app polls (/rest/notifications among
+    // others), so the network never goes idle and waitForLoadState burns the
+    // whole test budget — 88.5s of this test's 90s, per its own trace. The
+    // .catch() below it only ever swallowed a rejection; it cannot shorten a
+    // hang. Playwright's auto-waiting on the click is the deterministic
+    // condition, and it is the one that actually matters.
 
     // 2. Switch to the New Patient tab.
+    await expect(page.locator("#newPatient")).toBeEnabled({
+      timeout: NAV_TIMEOUT,
+    });
     await page.locator("#newPatient").click();
 
     // 3. Wait for the form to render — firstName is a stable required
