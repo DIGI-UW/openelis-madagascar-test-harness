@@ -224,8 +224,11 @@ test.describe("OGC-654 UI-driven note persistence", () => {
       fullPage: true,
     });
 
-    // Click the bottom Save button.
-    const saveBtn = page.getByRole("button", { name: /^save$/i }).last();
+    // Click the bottom submit button. On this screen it reads "Validate",
+    // not "Save" — confirmed from the CI failure screenshot, which showed
+    // the accept checkbox correctly ticked and the note correctly typed,
+    // with only this locator failing to find a "Save"-labeled button.
+    const saveBtn = page.getByRole("button", { name: /^validate$/i }).last();
     await expect(saveBtn).toBeVisible({ timeout: 10_000 });
 
     const [postResp] = await Promise.all([
