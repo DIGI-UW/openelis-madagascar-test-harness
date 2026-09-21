@@ -51,10 +51,10 @@ const FIRST_NAME = `Reg${SUFFIX}`;
 const LAST_NAME = `Journey${SUFFIX}`;
 const NATIONAL_ID = `NID-${Date.now()}`;
 const PRIMARY_PHONE = "+261-37-456-76-98"; // OGC-671: local numbers are
-  // 37 (Orange) or 38 (Telecom) only. 33 is Airtel and validates false
-  // client-side, which leaves phoneValidation.status false and keeps
-  // #submit permanently disabled — the same superseded-requirement bug
-  // fixed in ogc-671-phone-format-madagascar.spec.ts.
+// 37 (Orange) or 38 (Telecom) only. 33 is Airtel and validates false
+// client-side, which leaves phoneValidation.status false and keeps
+// #submit permanently disabled — the same superseded-requirement bug
+// fixed in ogc-671-phone-format-madagascar.spec.ts.
 const FOKONTANY = `${RUN_ID}-fkt`;
 const HAMLET_OR_LOT = `${RUN_ID}-hml`;
 const GPS_LAT = "-18.879190";
@@ -151,9 +151,7 @@ test.describe("OGC-669 patient registration UX journey", () => {
 
     // 5. Expand the "Additional Information" accordion — address + GPS
     //    fields live inside it and are hidden until expanded.
-    await page
-      .getByRole("button", { name: /additional information/i })
-      .click();
+    await page.getByRole("button", { name: /additional information/i }).click();
 
     // 6-8. Cascading address dropdowns (3 levels: Province, Region, District).
     //      Each has id `address_hierarchy_${i}`. Cascade-disabled until parent
@@ -194,7 +192,6 @@ test.describe("OGC-669 patient registration UX journey", () => {
     // 11. Save. Button has id="submit" + type="submit"; text is just "Save"
     //     (FormattedMessage label.button.save → "Save").
     const saveBtn = page.locator("#submit");
-    await expect(saveBtn).toBeEnabled({ timeout: UI_TIMEOUT });
 
     // Pre-save diagnostic: dump form-input values + any visible error
     // messages so failures surface what's missing without a trace dive.
@@ -203,9 +200,7 @@ test.describe("OGC-669 patient registration UX journey", () => {
         console.log(`[browser ${msg.type()}] ${msg.text()}`);
       }
     });
-    page.on("pageerror", (err) =>
-      console.log(`[pageerror] ${err.message}`),
-    );
+    page.on("pageerror", (err) => console.log(`[pageerror] ${err.message}`));
     page.on("request", (req) => {
       if (req.method() === "POST") {
         console.log(`[POST request] ${req.url()}`);
@@ -221,16 +216,31 @@ test.describe("OGC-669 patient registration UX journey", () => {
       nationalId: "input#nationalId",
       birthDate: "input#date-picker-default-id",
       primaryPhone: "input#primaryPhone",
-      genderM: 'input#radio-1:checked',
-      genderF: 'input#radio-2:checked',
-      fokontany: "#fokontany",
-      hamletOrLot: "#hamletOrLot",
+      genderM: "input#radio-1:checked",
+      genderF: "input#radio-2:checked",
+      fokontany: "#addressHierarchy_3",
+      hamletOrLot: "#addressHierarchy_4",
       gpsLatitude: "#gpsLatitude",
       gpsLongitude: "#gpsLongitude",
       addr0: "#address_hierarchy_0",
       addr1: "#address_hierarchy_1",
       addr2: "#address_hierarchy_2",
     });
+
+    // #submit is disabled by CreatePatientForm whenever any phone field's
+    // validation status is false, so when this assertion is what fails, the
+    // invalid text is the answer. Report it before asserting — this block
+    // used to sit after the assertion, where it could never run in the one
+    // case it was written for.
+    const invalidFields = await page
+      .locator(".cds--form-requirement")
+      .allTextContents();
+    console.log(
+      `[OGC-669] visible field errors: ${JSON.stringify(invalidFields)}`,
+    );
+    console.log(`[OGC-669] #submit disabled=${await saveBtn.isDisabled()}`);
+
+    await expect(saveBtn).toBeEnabled({ timeout: UI_TIMEOUT });
     console.log(`[${RUN_ID}] pre-save form state:`, JSON.stringify(formState));
 
     const [postResp] = await Promise.all([
@@ -265,7 +275,9 @@ test.describe("OGC-669 patient registration UX journey", () => {
               x.text &&
               x.text.length < 200,
           );
-        const submitBtn = document.querySelector("#submit") as HTMLButtonElement;
+        const submitBtn = document.querySelector(
+          "#submit",
+        ) as HTMLButtonElement;
         return {
           submitDisabled: submitBtn?.disabled,
           submitVisible: submitBtn?.offsetParent !== null,
@@ -302,15 +314,20 @@ test.describe("OGC-669 patient registration UX journey", () => {
     const row = fetchPersonByName(FIRST_NAME, LAST_NAME);
     console.log(`[${RUN_ID}] persisted row:`, JSON.stringify(row));
 
-    expect(row, `person row for ${FIRST_NAME} ${LAST_NAME} must exist`)
-      .not.toBeNull();
+    expect(
+      row,
+      `person row for ${FIRST_NAME} ${LAST_NAME} must exist`,
+    ).not.toBeNull();
     expect(row!.fokontany, "fokontany column must persist").toBe(FOKONTANY);
     expect(row!.hamletOrLot, "hamlet_or_lot column must persist").toBe(
       HAMLET_OR_LOT,
     );
     // Province column is set via the cascade's typeName-based sync at
     // CreatePatientForm.jsx:1531-1551 — non-null is the meaningful assertion.
-    expect(row!.province, "province column must persist non-null").not.toBeNull();
+    expect(
+      row!.province,
+      "province column must persist non-null",
+    ).not.toBeNull();
     expect(
       Number(row!.gpsLatitude),
       "gps_latitude must round-trip as numeric",
