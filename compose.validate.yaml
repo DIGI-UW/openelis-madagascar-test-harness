@@ -28,9 +28,13 @@ services:
     volumes:
       - analyzer-imports:/data/analyzer-imports
       - /var/run/docker.sock:/var/run/docker.sock
+      # The mock builds its ASTM messages from the bridge's own analyzer profiles.
+      # Without them it cannot resolve a template and refuses to start.
+      - ${BRIDGE_REPO:-../openelis-analyzer-bridge}/src/main/resources/analyzer-profiles:/bridge-profiles:ro
     environment:
       ASTM_PORT_TEMPLATES: '{"9600":"genexpert_astm","5380":"mindray_bc5380","6001":"mindray_bs200","6002":"mindray_bs300"}'
       RESPONSE_DELAY_MS: "0"
+      ANALYZER_BRIDGE_PROFILES_DIR: /bridge-profiles
       BRIDGE_CONTAINER_NAME: openelis-analyzer-bridge
       MOCK_CONTAINER_NAME: openelis-analyzer-mock
     command:
