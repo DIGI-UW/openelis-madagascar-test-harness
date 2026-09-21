@@ -52,6 +52,9 @@ jobs:
           repository: DIGI-UW/OpenELIS-Global-2
           ref: develop
           path: OpenELIS-Global-2
+          # tools/analyzer-mock-server is a submodule; without this the
+          # directory is empty and the mock build fails on a missing Dockerfile.
+          submodules: recursive
 
       - name: Checkout bridge (analyzer profiles for the mock)
         uses: actions/checkout@v4
