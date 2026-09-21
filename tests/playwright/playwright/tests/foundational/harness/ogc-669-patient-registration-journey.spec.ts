@@ -50,7 +50,11 @@ const SUFFIX = letterSuffix();
 const FIRST_NAME = `Reg${SUFFIX}`;
 const LAST_NAME = `Journey${SUFFIX}`;
 const NATIONAL_ID = `NID-${Date.now()}`;
-const PRIMARY_PHONE = "+261-33-456-76-98"; // Madagascar format
+const PRIMARY_PHONE = "+261-37-456-76-98"; // OGC-671: local numbers are
+  // 37 (Orange) or 38 (Telecom) only. 33 is Airtel and validates false
+  // client-side, which leaves phoneValidation.status false and keeps
+  // #submit permanently disabled — the same superseded-requirement bug
+  // fixed in ogc-671-phone-format-madagascar.spec.ts.
 const FOKONTANY = `${RUN_ID}-fkt`;
 const HAMLET_OR_LOT = `${RUN_ID}-hml`;
 const GPS_LAT = "-18.879190";
@@ -163,8 +167,17 @@ test.describe("OGC-669 patient registration UX journey", () => {
     );
 
     // 9. Freetext sub-fokontany fields (rendered by CSV-driven inputType=freetext).
-    await fillCarbonInput({ page, selector: "#fokontany" }, FOKONTANY);
-    await fillCarbonInput({ page, selector: "#hamletOrLot" }, HAMLET_OR_LOT);
+    // The DOM id is the CSV's bindKey column, not the level's display name:
+    // distro's madagascar-levels.csv binds Fokontany/Hamlet-or-Lot to the
+    // generic address_hierarchy_3/4 keys (CreatePatientForm.tsx renders
+    // id={bindKey}) so OE2 needs no Madagascar-specific patient columns.
+    // #fokontany / #hamletOrLot were never real ids; confirmed by reading
+    // the distro CSV and the id={bindKey} render.
+    await fillCarbonInput({ page, selector: "#addressHierarchy_3" }, FOKONTANY);
+    await fillCarbonInput(
+      { page, selector: "#addressHierarchy_4" },
+      HAMLET_OR_LOT,
+    );
 
     // 10. GPS Lat/Long (gated by PATIENT_GPS_CAPTURE_ENABLED=true distro-side).
     await fillCarbonInput({ page, selector: "#gpsLatitude" }, GPS_LAT);
