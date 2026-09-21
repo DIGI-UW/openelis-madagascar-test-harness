@@ -112,6 +112,14 @@ jobs:
         if: failure()
         run: |
           mkdir -p test-artifacts
+          # Print the mock's own log inline. It is the service most likely to be
+          # unhealthy, and reading it should not require downloading an artifact.
+          echo "::group::analyzer-mock log (last 120 lines)"
+          docker compose -f distro/docker-compose.yml -f compose.validate.yaml logs --no-color --tail=120 analyzer-mock || true
+          echo "::endgroup::"
+          echo "::group::service health"
+          docker compose -f distro/docker-compose.yml -f compose.validate.yaml ps || true
+          echo "::endgroup::"
           docker compose -f distro/docker-compose.yml -f compose.validate.yaml logs > test-artifacts/all-services.log || true
           docker compose -f distro/docker-compose.yml -f compose.validate.yaml ps > test-artifacts/compose-ps.txt || true
 
