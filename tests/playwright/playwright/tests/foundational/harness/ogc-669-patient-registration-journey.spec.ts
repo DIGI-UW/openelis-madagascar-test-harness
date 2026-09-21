@@ -30,7 +30,7 @@ import { execSync } from "child_process";
  *   - OE2 `/rest/address-hierarchy/levels` API (exposes inputType per level)
  *   - `CreatePatientForm.jsx` renderer (branches on inputType)
  *   - OE2 PatientManagementUpdate persistence
- *   - Postgres `clinlims.person` schema (province / fokontany / hamlet_or_lot
+ *   - Postgres `clinlims.person` schema (gps_latitude / gps_longitude
  *     columns)
  *
  * The journey, not the wiring, is what's tested here. Wiring regressions
@@ -50,7 +50,11 @@ const SUFFIX = letterSuffix();
 const FIRST_NAME = `Reg${SUFFIX}`;
 const LAST_NAME = `Journey${SUFFIX}`;
 const NATIONAL_ID = `NID-${Date.now()}`;
-const PRIMARY_PHONE = "+261-33-456-76-98"; // Madagascar format
+const PRIMARY_PHONE = "+261-37-45-676-98"; // OGC-671: local numbers are
+// 37 (Orange) or 38 (Telecom) only. 33 is Airtel and validates false
+// client-side, which leaves phoneValidation.status false and keeps
+// #submit permanently disabled — the same superseded-requirement bug
+// fixed in ogc-671-phone-format-madagascar.spec.ts.
 const FOKONTANY = `${RUN_ID}-fkt`;
 const HAMLET_OR_LOT = `${RUN_ID}-hml`;
 const GPS_LAT = "-18.879190";
@@ -63,7 +67,7 @@ const BIRTH_DATE_VALUE = "1990-05-15";
 // Fetch the saved patient row by name and return the address fields.
 function fetchPersonByName(first: string, last: string) {
   const sql = `
-    SELECT first_name, last_name, province, fokontany, hamlet_or_lot,
+    SELECT first_name, last_name,
            gps_latitude::text, gps_longitude::text
     FROM clinlims.person
     WHERE first_name = '${first}' AND last_name = '${last}'
@@ -76,21 +80,10 @@ function fetchPersonByName(first: string, last: string) {
     .toString()
     .trim();
   if (!out) return null;
-  const [
-    firstName,
-    lastName,
-    province,
-    fokontany,
-    hamletOrLot,
-    gpsLatitude,
-    gpsLongitude,
-  ] = out.split("|");
+  const [firstName, lastName, gpsLatitude, gpsLongitude] = out.split("|");
   return {
     firstName,
     lastName,
-    province: province || null,
-    fokontany: fokontany || null,
-    hamletOrLot: hamletOrLot || null,
     gpsLatitude: gpsLatitude || null,
     gpsLongitude: gpsLongitude || null,
   };
@@ -107,9 +100,17 @@ test.describe("OGC-669 patient registration UX journey", () => {
       waitUntil: "domcontentloaded",
       timeout: NAV_TIMEOUT,
     });
-    await page.waitForLoadState("networkidle").catch(() => {});
+    // No networkidle wait here. The app polls (/rest/notifications among
+    // others), so the network never goes idle and waitForLoadState burns the
+    // whole test budget — 88.5s of this test's 90s, per its own trace. The
+    // .catch() below it only ever swallowed a rejection; it cannot shorten a
+    // hang. Playwright's auto-waiting on the click is the deterministic
+    // condition, and it is the one that actually matters.
 
     // 2. Switch to the New Patient tab.
+    await expect(page.locator("#newPatient")).toBeEnabled({
+      timeout: NAV_TIMEOUT,
+    });
     await page.locator("#newPatient").click();
 
     // 3. Wait for the form to render — firstName is a stable required
@@ -139,9 +140,7 @@ test.describe("OGC-669 patient registration UX journey", () => {
 
     // 5. Expand the "Additional Information" accordion — address + GPS
     //    fields live inside it and are hidden until expanded.
-    await page
-      .getByRole("button", { name: /additional information/i })
-      .click();
+    await page.getByRole("button", { name: /additional information/i }).click();
 
     // 6-8. Cascading address dropdowns (3 levels: Province, Region, District).
     //      Each has id `address_hierarchy_${i}`. Cascade-disabled until parent
@@ -163,8 +162,17 @@ test.describe("OGC-669 patient registration UX journey", () => {
     );
 
     // 9. Freetext sub-fokontany fields (rendered by CSV-driven inputType=freetext).
-    await fillCarbonInput({ page, selector: "#fokontany" }, FOKONTANY);
-    await fillCarbonInput({ page, selector: "#hamletOrLot" }, HAMLET_OR_LOT);
+    // The DOM id is the CSV's bindKey column, not the level's display name:
+    // distro's madagascar-levels.csv binds Fokontany/Hamlet-or-Lot to the
+    // generic address_hierarchy_3/4 keys (CreatePatientForm.tsx renders
+    // id={bindKey}) so OE2 needs no Madagascar-specific patient columns.
+    // #fokontany / #hamletOrLot were never real ids; confirmed by reading
+    // the distro CSV and the id={bindKey} render.
+    await fillCarbonInput({ page, selector: "#addressHierarchy_3" }, FOKONTANY);
+    await fillCarbonInput(
+      { page, selector: "#addressHierarchy_4" },
+      HAMLET_OR_LOT,
+    );
 
     // 10. GPS Lat/Long (gated by PATIENT_GPS_CAPTURE_ENABLED=true distro-side).
     await fillCarbonInput({ page, selector: "#gpsLatitude" }, GPS_LAT);
@@ -173,7 +181,6 @@ test.describe("OGC-669 patient registration UX journey", () => {
     // 11. Save. Button has id="submit" + type="submit"; text is just "Save"
     //     (FormattedMessage label.button.save → "Save").
     const saveBtn = page.locator("#submit");
-    await expect(saveBtn).toBeEnabled({ timeout: UI_TIMEOUT });
 
     // Pre-save diagnostic: dump form-input values + any visible error
     // messages so failures surface what's missing without a trace dive.
@@ -182,9 +189,7 @@ test.describe("OGC-669 patient registration UX journey", () => {
         console.log(`[browser ${msg.type()}] ${msg.text()}`);
       }
     });
-    page.on("pageerror", (err) =>
-      console.log(`[pageerror] ${err.message}`),
-    );
+    page.on("pageerror", (err) => console.log(`[pageerror] ${err.message}`));
     page.on("request", (req) => {
       if (req.method() === "POST") {
         console.log(`[POST request] ${req.url()}`);
@@ -200,16 +205,31 @@ test.describe("OGC-669 patient registration UX journey", () => {
       nationalId: "input#nationalId",
       birthDate: "input#date-picker-default-id",
       primaryPhone: "input#primaryPhone",
-      genderM: 'input#radio-1:checked',
-      genderF: 'input#radio-2:checked',
-      fokontany: "#fokontany",
-      hamletOrLot: "#hamletOrLot",
+      genderM: "input#radio-1:checked",
+      genderF: "input#radio-2:checked",
+      fokontany: "#addressHierarchy_3",
+      hamletOrLot: "#addressHierarchy_4",
       gpsLatitude: "#gpsLatitude",
       gpsLongitude: "#gpsLongitude",
       addr0: "#address_hierarchy_0",
       addr1: "#address_hierarchy_1",
       addr2: "#address_hierarchy_2",
     });
+
+    // #submit is disabled by CreatePatientForm whenever any phone field's
+    // validation status is false, so when this assertion is what fails, the
+    // invalid text is the answer. Report it before asserting — this block
+    // used to sit after the assertion, where it could never run in the one
+    // case it was written for.
+    const invalidFields = await page
+      .locator(".cds--form-requirement")
+      .allTextContents();
+    console.log(
+      `[OGC-669] visible field errors: ${JSON.stringify(invalidFields)}`,
+    );
+    console.log(`[OGC-669] #submit disabled=${await saveBtn.isDisabled()}`);
+
+    await expect(saveBtn).toBeEnabled({ timeout: UI_TIMEOUT });
     console.log(`[${RUN_ID}] pre-save form state:`, JSON.stringify(formState));
 
     const [postResp] = await Promise.all([
@@ -244,7 +264,9 @@ test.describe("OGC-669 patient registration UX journey", () => {
               x.text &&
               x.text.length < 200,
           );
-        const submitBtn = document.querySelector("#submit") as HTMLButtonElement;
+        const submitBtn = document.querySelector(
+          "#submit",
+        ) as HTMLButtonElement;
         return {
           submitDisabled: submitBtn?.disabled,
           submitVisible: submitBtn?.offsetParent !== null,
@@ -281,15 +303,22 @@ test.describe("OGC-669 patient registration UX journey", () => {
     const row = fetchPersonByName(FIRST_NAME, LAST_NAME);
     console.log(`[${RUN_ID}] persisted row:`, JSON.stringify(row));
 
-    expect(row, `person row for ${FIRST_NAME} ${LAST_NAME} must exist`)
-      .not.toBeNull();
-    expect(row!.fokontany, "fokontany column must persist").toBe(FOKONTANY);
-    expect(row!.hamletOrLot, "hamlet_or_lot column must persist").toBe(
-      HAMLET_OR_LOT,
-    );
-    // Province column is set via the cascade's typeName-based sync at
-    // CreatePatientForm.jsx:1531-1551 — non-null is the meaningful assertion.
-    expect(row!.province, "province column must persist non-null").not.toBeNull();
+    expect(
+      row,
+      `person row for ${FIRST_NAME} ${LAST_NAME} must exist`,
+    ).not.toBeNull();
+    // Deliberately not asserted here: fokontany, hamlet_or_lot and province.
+    // clinlims.person has no such columns and never did — distro PR #11 bound
+    // those levels to the generic addressHierarchy_3/4 keys precisely "so OE2
+    // does not need Madagascar-specific patient columns". This query used to
+    // name all three, so psql failed outright and the test could never report
+    // on what it did save. Verified against a live schema: person carries
+    // gps_latitude and gps_longitude, and nothing else from this set.
+    //
+    // Asserting those three needs whoever owns the address-hierarchy model to
+    // say where freetext levels persist; address_part holds only the generic
+    // department/commune/village keys. Until then this covers the part of
+    // OGC-671 that is verifiable — the patient saves, with its GPS.
     expect(
       Number(row!.gpsLatitude),
       "gps_latitude must round-trip as numeric",

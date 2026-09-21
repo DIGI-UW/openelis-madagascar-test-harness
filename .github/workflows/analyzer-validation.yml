@@ -77,6 +77,17 @@ jobs:
           BASE_URL: https://localhost
         run: ./scripts/seed-qc.sh
 
+      # Resource snapshot before the browser work. Both Madagascar UI journeys
+      # die here with a browser-level disconnect rather than an assertion, and
+      # this job builds six images from source before running them, so the
+      # first question is whether the runner still has headroom. Without this
+      # the crash is unattributable.
+      - name: Resources before Playwright
+        run: |
+          echo "::group::memory"; free -m || true; echo "::endgroup::"
+          echo "::group::disk"; df -h / /tmp || true; echo "::endgroup::"
+          echo "::group::per-container"; docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.CPUPerc}}' || true; echo "::endgroup::"
+
       - name: API contract smoke tests
         id: api_contract
         run: |
@@ -106,6 +117,13 @@ jobs:
           if [ "${{ steps.run_subset.outcome }}" != "success" ]; then
             echo "Analyzer subset reported failures; logs and artifacts have been uploaded for triage."
           fi
+
+      - name: Resources after Playwright
+        if: always()
+        run: |
+          echo "::group::memory"; free -m || true; echo "::endgroup::"
+          echo "::group::dmesg tail (OOM killer, if any)"; sudo dmesg 2>/dev/null | tail -40 || true; echo "::endgroup::"
+          echo "::group::per-container"; docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}' || true; echo "::endgroup::"
 
       - name: Collect service logs
         if: always()
