@@ -50,7 +50,7 @@ const SUFFIX = letterSuffix();
 const FIRST_NAME = `Reg${SUFFIX}`;
 const LAST_NAME = `Journey${SUFFIX}`;
 const NATIONAL_ID = `NID-${Date.now()}`;
-const PRIMARY_PHONE = "+261-37-456-76-98"; // OGC-671: local numbers are
+const PRIMARY_PHONE = "+261-37-45-676-98"; // OGC-671: local numbers are
 // 37 (Orange) or 38 (Telecom) only. 33 is Airtel and validates false
 // client-side, which leaves phoneValidation.status false and keeps
 // #submit permanently disabled — the same superseded-requirement bug
