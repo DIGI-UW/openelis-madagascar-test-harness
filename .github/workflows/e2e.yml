@@ -123,11 +123,16 @@ jobs:
           docker compose -f distro/docker-compose.yml -f compose.validate.yaml logs > test-artifacts/all-services.log || true
           docker compose -f distro/docker-compose.yml -f compose.validate.yaml ps > test-artifacts/compose-ps.txt || true
 
+      - name: Name the artifact
+        if: always()
+        # Artifact names cannot contain "/", which a branch ref can.
+        run: echo "ARTIFACT_NAME=e2e-${DISTRO_REF//\//-}" >> "$GITHUB_ENV"
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-${{ env.DISTRO_REF }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: |
             test-results
             test-artifacts
