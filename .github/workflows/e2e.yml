@@ -10,16 +10,14 @@ name: E2E (against distro candidate)
 #   - workflow_dispatch  (manual; pick a distro ref to validate)
 #   - schedule           (nightly against latest distro tag)
 #
-# To validate a candidate before tagging, run with `distro_ref` set to the
-# main-branch SHA the artifact was built from (Phase 3 release.yml in distro
-# uploads a workflow artifact for every push to main; this workflow could
-# be extended later to download that artifact directly).
+# To validate a candidate before tagging, run with `distro_ref` set to its
+# branch or commit SHA.
 
 on:
   workflow_dispatch:
     inputs:
       distro_ref:
-        description: "Distro ref to validate (tag or commit SHA on main)"
+        description: "Distro ref to validate (tag, branch, or commit SHA)"
         required: true
         default: "3.2.2.0"
   schedule:
@@ -67,7 +65,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p distro
-          curl -sSfL "https://github.com/${DISTRO_REPO}/archive/refs/tags/${DISTRO_REF}.tar.gz" \
+          # archive/<ref> resolves a tag, a branch or a commit SHA, so a candidate can be
+          # validated before it is tagged.
+          curl -sSfL "https://github.com/${DISTRO_REPO}/archive/${DISTRO_REF}.tar.gz" \
             | tar xz -C distro --strip-components=1
           ls -la distro/
 
@@ -123,11 +123,16 @@ jobs:
           docker compose -f distro/docker-compose.yml -f compose.validate.yaml logs > test-artifacts/all-services.log || true
           docker compose -f distro/docker-compose.yml -f compose.validate.yaml ps > test-artifacts/compose-ps.txt || true
 
+      - name: Name the artifact
+        if: always()
+        # Artifact names cannot contain "/", which a branch ref can.
+        run: echo "ARTIFACT_NAME=e2e-${DISTRO_REF//\//-}" >> "$GITHUB_ENV"
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-${{ env.DISTRO_REF }}
+          name: ${{ env.ARTIFACT_NAME }}
           path: |
             test-results
             test-artifacts
